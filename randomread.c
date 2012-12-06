@@ -43,7 +43,7 @@ int main(int argc, char **argv){
     perror("lseek");
     exit(1);
   }
-  printf("size of %s = %ld\n", argv[2], fsize);
+  printf("size of %s = %ld\n", argv[1], fsize);
   close(fd);
   assert(fsize >= (iosize * iterate));
 
