@@ -1,17 +1,16 @@
 CC = gcc
 READBENCH = sequentialread randomread
-READWAFBENCH = sequentialreadaf randomreadaf
 
-all: $(READBENCH) $(READWAFBENCH) cleanobject
+all: $(READBENCH) cleanobject
 
-$(READBENCH) $(READWAFBENCH): % : %.o iomicrobench.o
+$(READBENCH) : % : %.o iomicrobench.o
 	$(CC) -o $@ $^ -lpthread
 
 cleanobject:
-	/bin/rm -f $(addsuffix .o, $(READBENCH)) $(addsuffix .o, $(READWAFBENCH)) iomicrobench.o
+	/bin/rm -f $(addsuffix .o, $(READBENCH)) iomicrobench.o
 
 clean:
-	/bin/rm -f $(READBENCH) $(READWAFBENCH)
+	/bin/rm -f $(READBENCH)
 
 .PHONY: check-syntax
 
