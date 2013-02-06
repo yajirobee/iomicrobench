@@ -20,8 +20,8 @@ class benchmarker(object):
 
     def run(self, *vals):
         bname = self.outdir
-        + '_'.join([os.path.basename(self.fpath)] +
-                   [str(k) + str(v) for k, v in zip(self.varnames, vals)])
+        bname += '_'.join([os.path.basename(self.fpath)] +
+                          [str(k) + str(v) for k, v in zip(self.varnames, vals)])
         if self.perfflg:
             perfpath = bname + ".perf"
             self.cmd = "perf record -a -o {0} ".format(perfpath) + self.cmd
