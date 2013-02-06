@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 import sys, os, sqlite3
-import plotutil
+import plotutil as pu
 
 iosize = 2 ** 9
 
@@ -24,43 +24,55 @@ if __name__ == "__main__":
     cols = ["elapsed", "mbps", "iops", "latency"]
     tables = ["sequential_read", "random_read"]
 
-    gp = plotutil.gpinit(terminaltype)
-    for table in tables:
-        gp('set title "{0} iosize = {1}"'.format(table, iosize))
-        #draw nlu-spec graph
-        gp('set nologscale x')
-        nthreadlist = [r[0] for r in conn.execute("select distinct nthread from {0} where iosize={1}".format(table, iosize))]
-        gp.xlabel("nlu")
-        for col in cols:
-            gp.ylabel(col)
-            if col == "mbps" or col == "iops":
-                gp('set key left top')
-            else:
-                gp('set key right top')
-            figpath = "{0}_{1}_xnlu.{2}".format(table, col, terminaltype)
-            gp('set output "{0}"'.format(figpath))
-            query = "select nlu,{0} from {1} where nthread={{nthread}} and iosize={2}".format(col, table, iosize)
-            gd = plotutil.query2data(conn, query, nthread = nthreadlist,
-                                       with_ = "linespoints")
-            sys.stdout.write('draw : {0}\n'.format(figpath))
-            gp.plot(*gd)
+    gp = pu.gpinit(terminaltype)
+    #draw nlu-spec graph
+    gp('set nologscale x')
+    distinctsql = "select distinct nthread from {0} where iosize={1}"
+    nthreadlistlist = [[r[0] for r in conn.execute(distinctsql.format(tbl, iosize))]
+                       for tbl in tables]
+    gp.xlabel("nlu")
+    for col in cols:
+        gp('set title "{0} iosize = {1}"'.format(col, iosize))
+        gp.ylabel(col)
+        if col == "mbps" or col == "iops":
+            gp('set key left top')
+        else:
+            gp('set key right top')
+        figpath = "{0}_xnlu.{1}".format(col, terminaltype)
+        gp('set output "{0}"'.format(figpath))
+        gds = []
+        for tbl, nth in zip(tables, nthreadlistlist):
+            query = ("select nlu,{0} from {1} where nthread={{nthread}} and iosize={2}"
+                     .format(col, tbl, iosize))
+            gds.extend(pu.query2data(conn, query, nthread = nth,
+                                     title = "{0} {1} = {{{1}}}".format(tbl, "nlu"),
+                                     with_ = "linespoints"))
+        sys.stdout.write('draw : {0}\n'.format(figpath))
+        gp.plot(*gds)
 
-        #draw nthread-spec graph
-        gp('set logscale x')
-        nlulist = [r[0] for r in conn.execute("select distinct nlu from {0} where iosize={1}".format(table, iosize))]
-        gp.xlabel("nthread")
-        for col in cols:
-            gp.ylabel(col)
-            if col == "mbps" or col == "latency":
-                gp('set key left top')
-            else:
-                gp('set key right top')
-            figpath = "{0}_{1}_xnthread.{2}".format(table, col, terminaltype)
-            gp('set output "{0}"'.format(figpath))
-            query = "select nthread,{0} from {1} where nlu={{nlu}} and iosize={2}".format(col, table, iosize)
-            gd = plotutil.query2data(conn, query, nlu = nlulist,
-                                       with_ = "linespoints")
-            sys.stdout.write('draw : {0}\n'.format(figpath))
-            gp.plot(*gd)
+    #draw nthread-spec graph
+    gp('set logscale x')
+    distinctsql = "select distinct nlu from {0} where iosize={1}"
+    nlulistlist = [[r[0] for r in conn.execute(distinctsql.format(tbl, iosize))]
+                   for tbl in tables]
+    gp.xlabel("nthread")
+    for col in cols:
+        gp('set title "{0} iosize = {1}"'.format(col, iosize))
+        gp.ylabel(col)
+        if col == "mbps" or col == "latency":
+            gp('set key left top')
+        else:
+            gp('set key right top')
+        figpath = "{0}_xnthread.{1}".format(col, terminaltype)
+        gp('set output "{0}"'.format(figpath))
+        gds = []
+        for tbl, nlu in zip(tables, nlulistlist):
+            query = ("select nthread,{0} from {1} where nlu={{nlu}} and iosize={2}"
+                     .format(col, tbl, iosize))
+            gds.extend(pu.query2data(conn, query, nlu = nlu,
+                                     title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
+                                     with_ = "linespoints"))
+        sys.stdout.write('draw : {0}\n'.format(figpath))
+        gp.plot(*gds)
     gp.close()
     conn.close()
