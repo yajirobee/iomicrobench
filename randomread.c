@@ -25,30 +25,36 @@ int main(int argc, char **argv){
   struct timeval stime, ftime;
   double elatime, mbps, iops, latency = 0.0;
 
-  if (argc != 5){
-    printf("Usage : %s filepath iosize iterate nthread\n", argv[0]);
+  if (argc == 5){
+    iosize = atol(argv[2]);
+    iterate = atol(argv[3]);
+    nthread = atoi(argv[4]);
+    // check file size
+    if ((fd = open(argv[1], O_RDONLY)) < 0){
+      perror("open");
+      exit(1);
+    }
+    if ((fsize = lseek(fd, 0, SEEK_END)) < 0){
+      perror("lseek");
+      exit(1);
+    }
+    printf("size of %s = %ld\n", argv[1], fsize);
+    close(fd);
+  }
+  else if (argc == 6){
+    iosize = atol(argv[2]);
+    iterate = atol(argv[3]);
+    nthread = atoi(argv[4]);
+    fsize = atol(argv[5]);
+  }
+  else{
+    printf("Usage : %s filepath iosize iterate nthread [fsize]\n", argv[0]);
     exit(1);
   }
-  iosize = atol(argv[2]);
-  iterate = atol(argv[3]);
-  nthread = atoi(argv[4]);
   assert(iosize % BLOCK_SIZE == 0);
-
-  // check file size
-  if ((fd = open(argv[1], O_RDONLY)) < 0){
-    perror("open");
-    exit(1);
-  }
-  if ((fsize = lseek(fd, 0, SEEK_END)) < 0){
-    perror("lseek");
-    exit(1);
-  }
-  printf("size of %s = %ld\n", argv[1], fsize);
-  close(fd);
-  assert(fsize >= (iosize * iterate));
+  assert(fsize >= iosize);
 
   //set seekmax
-  assert((fsize - iosize) > 0);
   if (((fsize - iosize) / BLOCK_SIZE) <= RAND_MAX){
     seekmax = (fsize - iosize) / BLOCK_SIZE;
   }
