@@ -18,9 +18,9 @@ class benchmarker(object):
     def setcmd(self, prg):
         self.cmd = self.cmdtmp.format(prg, self.fpath)
 
-    def run(self, vals):
+    def run(self, *vals):
         bname = '_'.join([os.path.basename(self.fpath)] +
-                         [str(k) + str(v) for k, v in zip(varnames, vals)])
+                         [str(k) + str(v) for k, v in zip(self.varnames, vals)])
         if self.perfflg:
             perfpath = bname + ".perf"
             self.cmd = "perf record -a -o {0} ".format(perfpath) + self.cmd
@@ -42,7 +42,7 @@ class benchmarker(object):
             if self.statflg:
                 pio.kill()
                 pcpu.kill()
-        res = [0.0 for i in resnames]
+        res = [0.0 for i in self.resnames]
         for line in p.stdout:
             line = line.rstrip()
             for i, pat in enumerate(self.patterns):
