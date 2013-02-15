@@ -2,36 +2,33 @@
 
 import sys, os, re, subprocess, shlex, time, sqlite3
 
-class readbenchmarker(object):
-    elapat = re.compile(r"elapsed = (\d+(?:\.\d*)?)(?:\(us\))?")
-    mbpspat = re.compile(r"mbps = (\d+(?:\.\d*)?)\(MB/s\)")
-    iopspat = re.compile(r"iops = (\d+(?:\.\d*)?)\(io/s\)")
-    latencypat = re.compile(r"latency = (\d+(?:\.\d*)?)(?:\(us\))?")
-    patterns = (elapat, mbpspat, iopspat, latencypat)
+class benchmarker(object):
+    patterns = []
 
-    varnames = ["iosize", "iterate", "nthread"]
-    resnames = ["elapsed", "mbps", "iops", "latency"]
-
-    def __init__(self, fpath, outdir, perfflg = False, statflg = False):
+    def __init__(self, fpath, outdir = ".",
+                 perfflg = False, statflg = False):
         self.fpath = fpath
         self.outdir = outdir
         self.perfflg = perfflg
         self.statflg = statflg
 
-    def setcmd(self, prg):
-        self.cmd = "{0} {1} {{0}} {{1}} {{2}}".format(prg, self.fpath)
+    def setcmdtemplate(self, cmdtmp):
+        self.cmdtmp = cmdtmp
 
-    def run(self, iosize, iterate, nthread):
-        bname = os.path.basename(self.fpath)
-        ioprofpath = "{0}/{1}_io{2}_thr{3}.io".format(self.outdir, bname, iosize, nthread)
-        cpuprofpath = "{0}/{1}_io{2}_thr{3}.cpu".format(self.outdir, bname, iosize, nthread)
+    def setcmd(self, prg):
+        self.cmd = self.cmdtmp.format(prg, self.fpath)
+
+    def run(self, vals):
+        bname = '_'.join([os.path.basename(self.fpath)] +
+                         [str(k) + str(v) for k, v in zip(varnames, vals)])
         if self.perfflg:
-            perfpath = ("{0}/{1}_io{2}_thr{3}.perf"
-                        .format(self.outdir, bname, iosize, nthread))
+            perfpath = bname + ".perf"
             self.cmd = "perf record -a -o {0} ".format(perfpath) + self.cmd
-        cmd = self.cmd.format(iosize, iterate, nthread)
+        cmd = self.cmd.format(*vals)
         sys.stdout.write("start : {0}\n".format(cmd))
         if self.statflg:
+            ioprofpath = bname + ".io"
+            cpuprofpath = bname + ".cpu"
             pio = subprocess.Popen(["iostat", "-x", "1"],
                                    stdout = open(ioprofpath, "w"))
             pcpu = subprocess.Popen(["mpstat", "-P", "ALL", "1"],
@@ -45,7 +42,7 @@ class readbenchmarker(object):
             if self.statflg:
                 pio.kill()
                 pcpu.kill()
-        res = [0.0, 0.0, 0.0, 0.0]
+        res = [0.0 for i in resnames]
         for line in p.stdout:
             line = line.rstrip()
             for i, pat in enumerate(self.patterns):
@@ -56,11 +53,27 @@ class readbenchmarker(object):
                     break
         return res
 
+class readbenchmarker(benchmarker):
+    elapat = re.compile(r"elapsed = (\d+(?:\.\d*)?)(?:\(us\))?")
+    mbpspat = re.compile(r"mbps = (\d+(?:\.\d*)?)\(MB/s\)")
+    iopspat = re.compile(r"iops = (\d+(?:\.\d*)?)\(io/s\)")
+    latencypat = re.compile(r"latency = (\d+(?:\.\d*)?)(?:\(us\))?")
+    patterns = (elapat, mbpspat, iopspat, latencypat)
+
+    varnames = ["iosize", "iterate", "nthread"]
+    resnames = ["elapsed", "mbps", "iops", "latency"]
+
+    def __init__(self, fpath, outdir = ".",
+                 perfflg = False, statflg = False):
+        super(readbenchmarker, self).__init__(fpath, outdir, perfflg, statflg)
+        self.setcmdtemplate("{0} {1} {{0}} {{1}} {{2}}")
+
 class iobenchrecorder(object):
     typedict = {"iosize" : "integer", "iterate" : "integer",
                 "nthread" : "integer", "nlu" : "integer",
                 "elapsed" : "real", "mbps" : "real",
-                "iops" : "real", "latency" : "real", "fullutil" : "real"}
+                "iops" : "real", "latency" : "real", "fullutil" : "real",
+                "fsize" : "integer"}
 
     def __init__(self, dbpath, tblname, varnames, resnames, mfunc):
         self.tblname = tblname

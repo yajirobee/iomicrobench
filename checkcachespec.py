@@ -3,8 +3,11 @@
 import sys, os, subprocess, shlex, re, sqlite3, itertools, time
 import iobench
 
-iomax = 2 ** 37
-parameters = ([2 ** i for i in range(9, 22)], [10000], [1])
+iomaxes = [2 ** i for i in range(20, 36)]
+iosize = 2 * 13
+thread = 1
+iterate = 100000
+parameters = (([iosize], [iterate], [thread], iomaxes),)
 '''
 nthreads = [2 ** i for i in range(11)]
 parameters = (([2 ** 9], [2 ** 15], nthreads),
@@ -24,17 +27,8 @@ if __name__ == "__main__":
     bname = os.path.splitext(os.path.basename(fpath))[0]
     dbpath = "{0}/readspec_{1}.db".format(outdir, bname)
     rbench = iobench.readbenchmarker(fpath, outdir)
-
-    # sequential read
-    sys.stdout.write("sequential read\n")
-    rbench.setcmd("./sequentialread")
-    seqrecorder = iobench.iobenchrecorder(dbpath, "sequential_read",
-                                          rbench.varnames, rbench.resnames,
-                                          rbench.run)
-    for p in parameters:
-        iosizes, iterates, nthreads = p
-        assert max(iosizes) * max(iterates) * max(nthreads) <= iomax, "excessive io size"
-        seqrecorder.allmeasure(itertools.product(iosizes, iterates, nthreads))
+    rbench.varnames.append("fsize")
+    rbench.setcmdtemplate("{0} {1} {{0}} {{1}} {{2}} {{3}}")
 
     # random read
     sys.stdout.write("random read\n")
@@ -43,6 +37,4 @@ if __name__ == "__main__":
                                            rbench.varnames, rbench.resnames,
                                            rbench.run)
     for p in parameters:
-        iosizes, iterates, nthreads = p
-        assert max(iosizes) * max(iterates) * max(nthreads) <= iomax, "excessive io size"
-        randrecorder.allmeasure(itertools.product(iosizes, iterates, nthreads))
+        randrecorder.allmeasure(itertools.product(*p))
