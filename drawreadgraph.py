@@ -45,7 +45,8 @@ if __name__ == "__main__":
         gp('set output "{0}"'.format(figpath))
         gds = []
         for tbl, nth in zip(tables, nthreadlistlist):
-            query = "select iosize,{0} from {1} where nthread={{nthread}}".format(col, tbl)
+            query = ("select iosize,avg({0}) from {1} where nthread={{nthread}} "
+                     "group by iosize,nthread".format(col, tbl))
             gds.extend(pu.query2data(conn, query, nthread = nth,
                                      title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
                                      with_ = "linespoints"))
@@ -68,7 +69,8 @@ if __name__ == "__main__":
         gp('set output "{0}"'.format(figpath))
         gds = []
         for tbl, ios in zip(tables, iosizelistlist):
-            query = "select nthread,{0} from {1} where iosize={{iosize}}".format(col, tbl)
+            query = ("select nthread,avg({0}) from {1} where iosize={{iosize}} "
+                     "group by iosize,nthread".format(col, tbl))
             gds.extend(pu.query2data(conn, query, iosize = ios,
                                      title = "{0} {1} = {{{1}}}".format(tbl, "iosize"),
                                      with_ = "linespoints"))
