@@ -10,9 +10,6 @@ class benchmarker(object):
         self.perfflg = perfflg
         self.statflg = statflg
 
-    def setcmdconst(self, *vals):
-        self.cmd = self.cmdtmp.format(*vals)
-
     def run(self, *vals):
         bname = self.opathprefix + '_'.join([str(k) + str(v) for k, v in zip(self.varnames, vals)])
         if self.perfflg:
@@ -60,7 +57,6 @@ class readbenchmarker(benchmarker):
     def __init__(self, opathprefix = "./",
                  perfflg = False, statflg = False):
         super(readbenchmarker, self).__init__(opathprefix, perfflg, statflg)
-        self.cmdtmp = "{0} {1} {{0}} {{1}} {{2}}"
 
 class iobenchrecorder(object):
     typedict = {"iosize" : "integer", "iterate" : "integer",

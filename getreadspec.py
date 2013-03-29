@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     # sequential read
     sys.stdout.write("sequential read\n")
-    rbench.setcmdconst("./sequentialread", fpath)
+    rbench.cmd = "./sequentialread {0} {{0}} {{1}} {{2}}".format(fpath)
     seqrecorder = iobench.iobenchrecorder(dbpath, "sequential_read",
                                           rbench.varnames, rbench.resnames,
                                           rbench.run)
@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     # random read
     sys.stdout.write("random read\n")
-    rbench.setcmdconst("./randomread", fpath)
+    rbench.cmd = "./randomread {0} {{0}} {{1}} {{2}}".format(fpath)
     randrecorder = iobench.iobenchrecorder(dbpath, "random_read",
                                            rbench.varnames, rbench.resnames,
                                            rbench.run)

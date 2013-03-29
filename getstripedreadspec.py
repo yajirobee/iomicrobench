@@ -15,7 +15,6 @@ class stripedreadbenchmarker(iobench.readbenchmarker):
         self.outdir = ourdir
         self.perfflg = perfflg
         self.statflg = statflg
-        self.cmdtmp = "{0} {{fpath}} {{iosize}} {{iterate}} {{nthread}}"
 
     def run(self, fpaths, iosize, iterate, nthread):
         sys.stdout.write(("storage benchmark started\n"
@@ -111,7 +110,7 @@ if __name__ == "__main__":
 
     # sequential read
     sys.stdout.write("sequential read\n")
-    srbench.setcmdconst("./sequentialread")
+    srbench.cmd = "./sequentialread {{fpath}} {{iosize}} {{iterate}} {{nthread}}"
     seqrecorder = iobenchrecorder(dbpath, "sequential_read",
                                   srbench.varnames, srbench.resnames,
                                   srbench.run)
@@ -127,7 +126,7 @@ if __name__ == "__main__":
 
     #random read
     sys.stdout.write("random read\n")
-    srbench.setcmdconst("./randomread")
+    srbench.cmd = "./randomread {{fpath}} {{iosize}} {{iterate}} {{nthread}}"
     randrecorder = iobenchrecorder(dbpath, "random_read",
                                    srbench.varnames, srbench.resnames,
                                    srbench.run)
