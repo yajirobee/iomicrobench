@@ -16,18 +16,18 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.stdout.write("Usage : {0} fpath\n".format(sys.argv[0]))
         sys.exit(0)
-    outdir = "/data/local/keisuke/{0}".format(
-        time.strftime("%Y%m%d%H%M%S", time.gmtime()))
-    os.mkdir(outdir)
-
     fpath = sys.argv[1]
     bname = os.path.splitext(os.path.basename(fpath))[0]
+    opathprefix = "/data/local/keisuke/{0}/{1}".format(
+        time.strftime("%Y%m%d%H%M%S", time.gmtime()), bname)
+    os.mkdir(outdir)
     dbpath = "{0}/readspec_{1}.db".format(outdir, bname)
-    rbench = iobench.readbenchmarker(fpath, outdir)
+
+    rbench = iobench.readbenchmarker(opathprefix)
 
     # sequential read
     sys.stdout.write("sequential read\n")
-    rbench.setcmd("./sequentialread")
+    rbench.setcmdconst("./sequentialread", fpath)
     seqrecorder = iobench.iobenchrecorder(dbpath, "sequential_read",
                                           rbench.varnames, rbench.resnames,
                                           rbench.run)
@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     # random read
     sys.stdout.write("random read\n")
-    rbench.setcmd("./randomread")
+    rbench.setcmdconst("./randomread", fpath)
     randrecorder = iobench.iobenchrecorder(dbpath, "random_read",
                                            rbench.varnames, rbench.resnames,
                                            rbench.run)

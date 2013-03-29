@@ -5,23 +5,16 @@ import sys, os, re, subprocess, shlex, time, sqlite3
 class benchmarker(object):
     patterns = []
 
-    def __init__(self, fpath, outdir = ".",
-                 perfflg = False, statflg = False):
-        self.fpath = fpath
-        self.outdir = outdir
+    def __init__(self, opathprefix = "./", perfflg = False, statflg = False):
+        self.opathprefix = opathprefix
         self.perfflg = perfflg
         self.statflg = statflg
 
-    def setcmdtemplate(self, cmdtmp):
-        self.cmdtmp = cmdtmp
-
-    def setcmd(self, prg):
-        self.cmd = self.cmdtmp.format(prg, self.fpath)
+    def setcmdconst(self, *vals):
+        self.cmd = self.cmdtmp.format(*vals)
 
     def run(self, *vals):
-        bname = "{0}/{1}".format(self.outdir, '_'.join(
-                [os.path.basename(self.fpath)] +
-                [str(k) + str(v) for k, v in zip(self.varnames, vals)]))
+        bname = self.opathprefix + '_'.join([str(k) + str(v) for k, v in zip(self.varnames, vals)])
         if self.perfflg:
             perfpath = bname + ".perf"
             self.cmd = "perf record -a -o {0} ".format(perfpath) + self.cmd
@@ -64,10 +57,10 @@ class readbenchmarker(benchmarker):
     varnames = ["iosize", "iterate", "nthread"]
     resnames = ["elapsed", "mbps", "iops", "latency"]
 
-    def __init__(self, fpath, outdir = ".",
+    def __init__(self, opathprefix = "./",
                  perfflg = False, statflg = False):
-        super(readbenchmarker, self).__init__(fpath, outdir, perfflg, statflg)
-        self.setcmdtemplate("{0} {1} {{0}} {{1}} {{2}}")
+        super(readbenchmarker, self).__init__(opathprefix, perfflg, statflg)
+        self.cmdtmp = "{0} {1} {{0}} {{1}} {{2}}"
 
 class iobenchrecorder(object):
     typedict = {"iosize" : "integer", "iterate" : "integer",
