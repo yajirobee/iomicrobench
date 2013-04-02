@@ -74,6 +74,10 @@ void reader(tskcnf_t *cnf){
       pthread_cond_signal(&cnf->waitmng->cnd);
     }
     while (cnf->rinfoque->size == 0){
+      if (cnf->waitmng->nwait == -1){
+      pthread_mutex_unlock(&cnf->rinfoque->mtx);
+      pthread_exit(NULL); 
+      }
       pthread_cond_wait(&cnf->rinfoque->more, &cnf->rinfoque->mtx);
     }
     --cnf->waitmng->nwait;
@@ -126,6 +130,11 @@ void read_replayer(int nthread, tskcnf_t *tskcnfs, FILE *fp){
     pthread_cond_wait(&waitmng->cnd, &waitmng->mtx);
   }
   pthread_mutex_unlock(&waitmng->mtx);
+  waitmng->nwait = -1;
+  pthread_cond_broadcast(&que->more);
+  for (i = 0; i < nthread; i++){
+    pthread_join(tskcnfs[i].pt, NULL);
+  }
 }
 
 int main(int argc, char **argv){
@@ -250,15 +259,15 @@ int main(int argc, char **argv){
   count = getnext(NULL, NULL);
   elatime = ((ftime.tv_sec - stime.tv_sec) * 1000000.0 +
              (ftime.tv_usec - stime.tv_usec));
-  mbps = (iosize * count * nthread) / elatime;
-  iops = (count * nthread) / (elatime / 1000000);
-  latency = elatime / (count * nthread);
+  mbps = (iosize * count) / elatime;
+  iops = count / (elatime / 1000000);
+  latency = elatime / count;
   printf("stime = %ld.%06d\n",
          (unsigned long)stime.tv_sec, (unsigned int)stime.tv_usec);
   printf("ftime = %ld.%06d\n",
          (unsigned long)ftime.tv_sec, (unsigned int)ftime.tv_usec);
-  printf("elapsed = %.1f(us)\nmbps = %f(MB/s)\niops = %f(io/s)\nlatency = %f(us)\n",
-         elatime, mbps, iops, latency);
+  printf("count = %d\nelapsed = %.1f(us)\nmbps = %f(MB/s)\niops = %f(io/s)\nlatency = %f(us)\n",
+         count, elatime, mbps, iops, latency);
 
   // release resources
   fclose(fp);

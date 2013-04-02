@@ -27,7 +27,7 @@ class benchmarker(object):
         try:
             p = subprocess.Popen(shlex.split(cmd), stdout = subprocess.PIPE)
             if p.wait() != 0:
-                sys.stderr.write("measure failed\n")
+                sys.stderr.write("measure failed : {0}\n".format(p.returncode))
                 sys.exit(1)
         finally:
             if self.statflg:
