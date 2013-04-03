@@ -70,17 +70,19 @@ void reader(tskcnf_t *cnf){
   // perform read operation
   while (1){
     pthread_mutex_lock(&cnf->rinfoque->mtx);
-    if (++cnf->waitmng->nwait == cnf->waitmng->nthread){
-      pthread_cond_signal(&cnf->waitmng->cnd);
-    }
-    while (cnf->rinfoque->size == 0){
-      if (cnf->waitmng->nwait == -1){
-      pthread_mutex_unlock(&cnf->rinfoque->mtx);
-      pthread_exit(NULL); 
+    if (cnf->rinfoque->size == 0){
+      if (++cnf->waitmng->nwait == cnf->waitmng->nthread){
+        pthread_cond_signal(&cnf->waitmng->cnd);
       }
-      pthread_cond_wait(&cnf->rinfoque->more, &cnf->rinfoque->mtx);
+      do {
+        pthread_cond_wait(&cnf->rinfoque->more, &cnf->rinfoque->mtx);
+        if (cnf->waitmng->nwait == -1){
+          pthread_mutex_unlock(&cnf->rinfoque->mtx);
+          pthread_exit(NULL);
+        }
+      } while (cnf->rinfoque->size == 0);
+      --cnf->waitmng->nwait;
     }
-    --cnf->waitmng->nwait;
     rinfo = pop(cnf->rinfoque);
     pthread_cond_signal(&cnf->rinfoque->less);
     pthread_mutex_unlock(&cnf->rinfoque->mtx);
@@ -131,7 +133,9 @@ void read_replayer(int nthread, tskcnf_t *tskcnfs, FILE *fp){
   }
   pthread_mutex_unlock(&waitmng->mtx);
   waitmng->nwait = -1;
+  pthread_mutex_lock(&que->mtx);
   pthread_cond_broadcast(&que->more);
+  pthread_mutex_unlock(&que->mtx);
   for (i = 0; i < nthread; i++){
     pthread_join(tskcnfs[i].pt, NULL);
   }
