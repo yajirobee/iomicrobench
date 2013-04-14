@@ -41,7 +41,7 @@ class readbenchmarker(object):
         finally:
             if self.statoutdir:
                 pio.kill()
-                pcpu.kill()
+                pmp.kill()
         res = {}
         for k in self.respatterns:
             res[k] = None
@@ -94,8 +94,26 @@ class iobenchrecorder(object):
                           orderedvals)
         self.conn.commit()
 
+def clear_dev_buffer():
+    # clear storage side buffer
+    ppool = []
+    readcmd = "/data/local/keisuke/local/bin/sequentialread /dev/fio{0}2 {1} {2} {3}"
+    for i in "abcdefgh":
+        ppool.append(subprocess.Popen(shlex.split(readcmd.format(i, 2 ** 25, 4, 8)),
+                                      stdout = open("/dev/null", "w")))
+    for p in ppool:
+        if p.wait() != 0:
+            sys.stderr.write("iodrive read error : {0}\n".format(p.pid))
+            sys.exit(1)
+
+def clear_cache():
+    ret = subprocess.call(["clearcache"])
+    if ret != 0:
+        sys.stderr.write("cache clear error\n")
+        sys.exit(1)
+
 def sequentialreadbench(fpath, outdir, valdicts):
-    rbench = readbenchmarker()
+    rbench = readbenchmarker(statoutdir = outdir)
     rbench.cmdtmp = "./sequentialread {0} {{iosize}} {{iterate}} {{nthread}}".format(fpath)
     bname = os.path.splitext(os.path.basename(fpath))[0]
     recorder = iobenchrecorder("{0}/readspec_{1}.db".format(outdir, bname))
@@ -106,23 +124,31 @@ def sequentialreadbench(fpath, outdir, valdicts):
         columns = ("iosize", "iterate", "nthread", "elapsed", "mbps", "iops", "latency")
         recorder.createtable(tblname, columns)
     for valdict in valdicts:
+        clear_dev_buffer()
+        clear_cache()
         res = rbench.run(valdict)
         res.update(valdict)
         recorder.insert(tblname, res)
 
 def randomreadbench(fpath, outdir, valdicts):
-    rbench = readbenchmarker()
+    rbench = readbenchmarker(statoutdir = outdir)
     rbench.cmdtmp = "./randomread {0} {{iosize}} {{iterate}} {{nthread}}".format(fpath)
     bname = os.path.splitext(os.path.basename(fpath))[0]
     recorder = iobenchrecorder("{0}/readspec_{1}.db".format(outdir, bname))
     tblname = "random_read"
-    columns = ("iosize", "iterate", "nthread", "elapsed", "mbps", "iops", "latency")
-    recorder.createtable(tblname, columns)
+    if tblname in recorder.tbldict:
+        columns = recorder.tbldict[tblname]
+    else:
+        columns = ("iosize", "iterate", "nthread", "elapsed", "mbps", "iops", "latency")
+        recorder.createtable(tblname, columns)
     for valdict in valdicts:
+        clear_dev_buffer()
+        clear_cache()
         res = rbench.run(valdict)
         res.update(valdict)
         recorder.insert(tblname, res)
 
+'''
 iomax = 2 ** 36
 #parameters = ([2 ** i for i in range(9, 22)], [10000], [1])
 nthreads = [2 ** i for i in range(11)]
@@ -134,6 +160,17 @@ for iosizes, iterates, nthreads in parameters:
     assert max(iosizes) * max(iterates) * max(nthreads) <= iomax, "excessive io size"
     for vals in itertools.product(iosizes, iterates, nthreads):
         valdicts.append({"iosize" : vals[0], "iterate" : vals[1], "nthread" : vals[2]})
+'''
+nthreads = [2 ** i for i in range(11)]
+parameters = ({"iosize" : 2 ** 9, "totalsize" : 2 ** 33, "nthreads" : nthreads},
+              {"iosize" : 2 ** 13, "totalsize" : 2 ** 34, "nthreads" : nthreads},
+              {"iosize" : 2 ** 16, "totalsize" : 2 ** 36, "nthreads" : nthreads})
+valdicts = []
+for conf in parameters:
+    for nth in conf["nthreads"]:
+        valdicts.append({"iosize" : conf["iosize"],
+                         "iterate" : conf["totalsize"] / (nth * conf["iosize"]),
+                         "nthread" : nth})
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -147,7 +184,9 @@ if __name__ == "__main__":
         # sequential read
         sys.stdout.write("sequential read\n")
         sequentialreadbench(fpath, outdir, valdicts)
+        time.sleep(300)
 
         # random read
         sys.stdout.write("random read\n")
         randomreadbench(fpath, outdir, valdicts)
+        time.sleep(300)
