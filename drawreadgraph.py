@@ -19,7 +19,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     conn = sqlite3.connect(dbpath)
-    cols = ["elapsed", "mbps", "iops", "latency"]
+    cols = ["mbps", "iops", "latency"]
     units = {"elapsed" : "(us)",
              "mbps" : "(MB/s)",
              "iops" : "",
@@ -29,29 +29,29 @@ if __name__ == "__main__":
 
     gp = pu.gpinit(terminaltype)
     gp('set logscale x')
-    #draw iosize-spec graph
-    nthreadlistlist = [[r[0] for r in
-                        conn.execute("select distinct nthread from {0}".format(tbl))]
-                       for tbl in tables]
-    gp.xlabel("io size (B)")
-    for col in cols:
-        gp('set title "{0}"'.format(col))
-        gp.ylabel("{0} {1}".format(col, units[col]))
-        if col == "mbps" or col == "latency":
-            gp('set key left top')
-        else:
-            gp('set key right top')
-        figpath = "{0}_{1}_xiosize.{2}".format(fpath, col, terminaltype)
-        gp('set output "{0}"'.format(figpath))
-        gds = []
-        for tbl, nth in zip(tables, nthreadlistlist):
-            query = ("select iosize,avg({0}) from {1} where nthread={{nthread}} "
-                     "group by iosize,nthread".format(col, tbl))
-            gds.extend(pu.query2data(conn, query, nthread = nth,
-                                     title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
-                                     with_ = "linespoints"))
-        sys.stdout.write('draw : {0}\n'.format(figpath))
-        gp.plot(*gds)
+    # #draw iosize-spec graph
+    # nthreadlistlist = [[r[0] for r in
+    #                     conn.execute("select distinct nthread from {0}".format(tbl))]
+    #                    for tbl in tables]
+    # gp.xlabel("io size (B)")
+    # for col in cols:
+    #     gp('set title "{0}"'.format(col))
+    #     gp.ylabel("{0} {1}".format(col, units[col]))
+    #     if col == "mbps" or col == "latency":
+    #         gp('set key left top')
+    #     else:
+    #         gp('set key right top')
+    #     figpath = "{0}_{1}_xiosize.{2}".format(fpath, col, terminaltype)
+    #     gp('set output "{0}"'.format(figpath))
+    #     gds = []
+    #     for tbl, nth in zip(tables, nthreadlistlist):
+    #         query = ("select iosize,avg({0}) from {1} where nthread={{nthread}} "
+    #                  "group by iosize,nthread".format(col, tbl))
+    #         gds.extend(pu.query2data(conn, query, nthread = nth,
+    #                                  title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
+    #                                  with_ = "linespoints"))
+    #     sys.stdout.write('draw : {0}\n'.format(figpath))
+    #     gp.plot(*gds)
 
     #draw nthread-spec graph
     iosizelistlist = [[r[0] for r in
@@ -59,9 +59,9 @@ if __name__ == "__main__":
                       for tbl in tables]
     gp.xlabel("nthread")
     for col in cols:
-        gp('set title "{0}"'.format(col))
+        gp('set title "read {0}"'.format(col))
         gp.ylabel("{0} {1}".format(col, units[col]))
-        if col == "mbps" or col == "latency" or col == "iops":
+        if col == "latency":
             gp('set key left top')
         else:
             gp('set key right top')
@@ -72,7 +72,7 @@ if __name__ == "__main__":
             query = ("select nthread,avg({0}) from {1} where iosize={{iosize}} "
                      "group by iosize,nthread".format(col, tbl))
             gds.extend(pu.query2data(conn, query, iosize = ios,
-                                     title = "{0} {1} = {{{1}}}".format(tbl, "iosize"),
+                                     title = "{0} {1} = {{{1}}}".format(tbl.split("_")[0], "iosize"),
                                      with_ = "linespoints"))
         sys.stdout.write('draw : {0}\n'.format(figpath))
         gp.plot(*gds)
