@@ -125,8 +125,14 @@ main(int argc, char **argv)
          "iteration\t%ld\n"
          "num_thread\t%d\n"
          "file_path\t%s\n"
+         "enable_odirect\t%s\n"
          "target_size\t%ld\n",
-         option.iosize, option.iterate, option.nthread, option.filepath, option.fsize);
+         option.iosize,
+         option.iterate,
+         option.nthread,
+         option.filepath,
+         (option.openflg & O_DIRECT) ? "TRUE" : "FALSE",
+         option.fsize);
 
   //set seekmax
   if (((option.fsize - option.iosize) / option.block_size) <= RAND_MAX) {
