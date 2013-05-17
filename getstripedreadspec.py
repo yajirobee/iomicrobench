@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     # sequential read
     sys.stdout.write("sequential read\n")
-    srbench.cmd = "./sequentialread {{fpath}} {{iosize}} {{iterate}} {{nthread}}"
+    srbench.cmd = "./sequentialread -s {iosize} -i {iterate} -m {nthread} {fpath}"
     seqrecorder = iobenchrecorder(dbpath, "sequential_read",
                                   srbench.varnames, srbench.resnames,
                                   srbench.run)
@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     #random read
     sys.stdout.write("random read\n")
-    srbench.cmd = "./randomread {{fpath}} {{iosize}} {{iterate}} {{nthread}}"
+    srbench.cmd = "./randomread -s {iosize} -i {iterate} -m {nthread} {fpath}"
     randrecorder = iobenchrecorder(dbpath, "random_read",
                                    srbench.varnames, srbench.resnames,
                                    srbench.run)

@@ -5,10 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define CPUCORES 32
-#define BLOCK_SIZE 512
 #define PRNG_BUFSZ 64
-#define OPEN_FLG_R O_RDONLY | O_DIRECT
 
 typedef struct{
   int fd;
@@ -29,7 +26,6 @@ typedef struct{
   cpu_set_t cpuset;
 } randread_t;
 
-void sequential_read(seqread_t *readinfo);
-void random_read(randread_t *readinfo);
+long procsuffix(char *);
 
 #endif // __SCHEME_IOMICROBENCH__

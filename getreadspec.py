@@ -114,7 +114,8 @@ def clear_cache():
 
 def sequentialreadbench(fpath, outdir, valdicts):
     rbench = readbenchmarker(statoutdir = outdir)
-    rbench.cmdtmp = "./sequentialread {0} {{iosize}} {{iterate}} {{nthread}}".format(fpath)
+    rbench.cmdtmp = ("./sequentialread "
+                     "-s {{iosize}} -i {{iterate}} -m {{nthread}} {0}".format(fpath))
     bname = os.path.splitext(os.path.basename(fpath))[0]
     recorder = iobenchrecorder("{0}/readspec_{1}.db".format(outdir, bname))
     tblname = "sequential_read"
@@ -132,7 +133,8 @@ def sequentialreadbench(fpath, outdir, valdicts):
 
 def randomreadbench(fpath, outdir, valdicts):
     rbench = readbenchmarker(statoutdir = outdir)
-    rbench.cmdtmp = "./randomread {0} {{iosize}} {{iterate}} {{nthread}}".format(fpath)
+    rbench.cmdtmp = ("./randomread "
+                     "-s {{iosize}} -i {{iterate}} -m {{nthread}} {0}".format(fpath))
     bname = os.path.splitext(os.path.basename(fpath))[0]
     recorder = iobenchrecorder("{0}/readspec_{1}.db".format(outdir, bname))
     tblname = "random_read"

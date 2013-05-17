@@ -1,15 +1,15 @@
 CC = gcc
 READBENCH = sequentialread randomread
 
-all: $(READBENCH) cleanobject
+all: $(READBENCH)
 
-$(READBENCH) : % : %.o iomicrobench.o
+$(READBENCH) : % : %.o util.o
 	$(CC) -o $@ $^ -lpthread
 
 cleanobject:
-	/bin/rm -f $(addsuffix .o, $(READBENCH)) iomicrobench.o
+	/bin/rm -f $(addsuffix .o, $(READBENCH)) util.o
 
-clean:
+clean: cleanobject
 	/bin/rm -f $(READBENCH)
 
 .PHONY: check-syntax
