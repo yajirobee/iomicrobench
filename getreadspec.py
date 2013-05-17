@@ -4,10 +4,10 @@ import sys, os, subprocess, shlex, re, sqlite3, itertools, time
 
 class readbenchmarker(object):
     respatterns = {
-        "elapsed" : re.compile(r"elapsed = (\d+(?:\.\d*)?)(?:\(us\))?"),
-        "mbps" : re.compile(r"mbps = (\d+(?:\.\d*)?)\(MB/s\)"),
-        "iops" : re.compile(r"iops = (\d+(?:\.\d*)?)\(io/s\)"),
-        "latency" : re.compile(r"latency = (\d+(?:\.\d*)?)(?:\(us\))?")
+        "elapsed" : re.compile(r"exec_time_usec\s(\d+(?:\.\d*)?)"),
+        "mbps" : re.compile(r"mb_per_sec\s(\d+(?:\.\d*)?)"),
+        "iops" : re.compile(r"io_per_sec\s(\d+(?:\.\d*)?)"),
+        "latency" : re.compile(r"usec_per_io\s(\d+(?:\.\d*)?)")
         }
     perfcmd = "perf stat -a -o {perfout} -- "
 
