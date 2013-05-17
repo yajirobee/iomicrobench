@@ -113,7 +113,6 @@ main(int argc, char **argv)
       perror("lseek");
       exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "size of %s = %ld\n", option.filepath, option.fsize);
     close(fd);
   }
 
