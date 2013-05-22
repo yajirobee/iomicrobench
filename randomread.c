@@ -168,7 +168,7 @@ main(int argc, char **argv)
   }
 
   // random read
-  printf("random read\n");
+  fprintf(stderr, "random read\n");
   for (i = 0; i < option.nthread; i++) {
     pthread_create(&pt[i], NULL,
                    (void *(*)(void *))random_read, (void *)(readinfos + i));
@@ -200,12 +200,12 @@ main(int argc, char **argv)
                 + (readinfos[i].ftime.tv_usec - readinfos[i].stime.tv_usec)) / option.iterate;
   }
   latency /= option.nthread;
-  printf("stime = %ld.%06d\n", (unsigned long)stime.tv_sec, (unsigned int)stime.tv_usec);
-  printf("ftime = %ld.%06d\n", (unsigned long)ftime.tv_sec, (unsigned int)ftime.tv_usec);
-  printf("elapsed = %.1f(us)\n"
-         "mbps = %f(MB/s)\n"
-         "iops = %f(io/s)\n"
-         "latency = %f(us)\n",
+  printf("start_time\t%ld.%06d\n", (unsigned long)stime.tv_sec, (unsigned int)stime.tv_usec);
+  printf("finish_time\t%ld.%06d\n", (unsigned long)ftime.tv_sec, (unsigned int)ftime.tv_usec);
+  printf("exec_time_usec\t%.1f\n"
+         "mb_per_sec\t%f\n"
+         "io_per_sec\t%f\n"
+         "usec_per_io\t%f\n",
          elatime, mbps, iops, latency);
 
   for (i = 0; i < option.nthread; i++) {
