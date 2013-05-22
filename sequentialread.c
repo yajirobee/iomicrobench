@@ -14,7 +14,9 @@
 #include <pthread.h>
 #include "iomicrobench.h"
 
-int main(int argc, char **argv){
+int
+main(int argc, char **argv)
+{
   int i;
   int nthread;
   long iosize, iterate, fsize;
@@ -24,7 +26,7 @@ int main(int argc, char **argv){
   struct timeval stime, ftime;
   double elatime, mbps, iops, latency = 0.0;
 
-  if (argc != 5){
+  if (argc != 5) {
     printf("Usage : %s filepath iosize iterate nthread\n", argv[0]);
     exit(1);
   }
@@ -34,11 +36,11 @@ int main(int argc, char **argv){
   assert(iosize % BLOCK_SIZE == 0);
 
   // check file size
-  if ((fd = open(argv[1], O_RDONLY)) < 0){
+  if ((fd = open(argv[1], O_RDONLY)) < 0) {
     perror("open");
     exit(1);
   }
-  if ((fsize = lseek(fd, 0, SEEK_END)) < 0){
+  if ((fsize = lseek(fd, 0, SEEK_END)) < 0) {
     perror("lseek");
     exit(1);
   }
@@ -47,19 +49,19 @@ int main(int argc, char **argv){
   assert(fsize >= (iosize * iterate * nthread));
 
   // allocate memory for pthread_t
-  if (posix_memalign((void **)&pt, BLOCK_SIZE, sizeof(pthread_t) * nthread) != 0){
+  if (posix_memalign((void **)&pt, BLOCK_SIZE, sizeof(pthread_t) * nthread) != 0) {
     perror("posix_memalign");
     exit(1);
   }
 
   // allocate memory for readinfo
-  if (posix_memalign((void **)&readinfos, BLOCK_SIZE, sizeof(seqread_t) * nthread) != 0){
+  if (posix_memalign((void **)&readinfos, BLOCK_SIZE, sizeof(seqread_t) * nthread) != 0) {
     perror("posix_memalign");
     exit(1);
   }
 
   // set readinfo
-  for (i = 0; i < nthread; i++){
+  for (i = 0; i < nthread; i++) {
     int j;
     // allocate buffer aligned by BLOCK_SIZE
     if (posix_memalign((void **)&readinfos[i].buf, BLOCK_SIZE, iosize) != 0){
@@ -67,18 +69,18 @@ int main(int argc, char **argv){
       exit(1);
     }
     // open file
-    if((readinfos[i].fd = open(argv[1], OPEN_FLG_R)) < 0){
+    if ((readinfos[i].fd = open(argv[1], OPEN_FLG_R)) < 0) {
       perror("open");
       exit(1);
     }
     // seek to assigned place
-    if (lseek(readinfos[i].fd, i * iosize * iterate, SEEK_SET) < 0){
+    if (lseek(readinfos[i].fd, i * iosize * iterate, SEEK_SET) < 0) {
       perror("lseek");
       exit(1);
     }
     // set cpuset
     CPU_ZERO(&readinfos[i].cpuset);
-    for (j = 0; j < CPUCORES; j++){ CPU_SET(j, &readinfos[i].cpuset); }
+    for (j = 0; j < CPUCORES; j++) { CPU_SET(j, &readinfos[i].cpuset); }
 
     readinfos[i].iosize = iosize;
     readinfos[i].iterate = iterate;
@@ -86,11 +88,11 @@ int main(int argc, char **argv){
 
   // sequential read
   printf("sequential read\n");
-  for (i = 0; i < nthread; i++){
+  for (i = 0; i < nthread; i++) {
     pthread_create(&pt[i], NULL,
                    (void *(*)(void *))sequential_read, (void *)(readinfos+ i));
   }
-  for (i = 0; i < nthread; i++){
+  for (i = 0; i < nthread; i++) {
     pthread_join(pt[i], NULL);
   }
 
@@ -119,7 +121,10 @@ int main(int argc, char **argv){
   latency /= nthread;
   printf("stime = %ld.%06d\n", (unsigned long)stime.tv_sec, (unsigned int)stime.tv_usec);
   printf("ftime = %ld.%06d\n", (unsigned long)ftime.tv_sec, (unsigned int)ftime.tv_usec);
-  printf("elapsed = %.1f(us)\nmbps = %f(MB/s)\niops = %f(io/s)\nlatency = %f(us)\n",
+  printf("elapsed = %.1f(us)\n"
+         "mbps = %f(MB/s)\n"
+         "iops = %f(io/s)\n"
+         "latency = %f(us)\n",
          elatime, mbps, iops, latency);
 
   for (i = 0; i < nthread; i++){

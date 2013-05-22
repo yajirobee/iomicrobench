@@ -20,10 +20,10 @@ if __name__ == "__main__":
 
     conn = sqlite3.connect(dbpath)
     cols = ["mbps", "iops", "latency"]
-    units = {"elapsed" : "(us)",
-             "mbps" : "(MB/s)",
+    units = {"elapsed" : "[us]",
+             "mbps" : "[MB/s]",
              "iops" : "",
-             "latency" : "(us)"}
+             "latency" : "[us]"}
     tables = ["sequential_read", "random_read"]
     fpath = os.path.dirname(dbpath) + "/" + os.path.splitext(dbpath)[0].rsplit('_', 1)[1]
 
