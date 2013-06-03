@@ -3,6 +3,8 @@
 import sys, os, sqlite3
 import plotutil as pu
 
+slide = True
+
 if __name__ == "__main__":
     if len(sys.argv) == 2:
         dbpath = os.path.abspath(sys.argv[1])
@@ -29,6 +31,16 @@ if __name__ == "__main__":
 
     gp = pu.gpinit(terminaltype)
     gp('set logscale x')
+    gp('set grid')
+    if slide:
+        if "eps" == terminaltype:
+            gp('set termoption font "Times-Roman,28"')
+            plotprefdict = {"with_" : "linespoints lt 1 lw 6" }
+        elif "png" == terminaltype:
+            gp('set termoption font "Times-Roman,14"')
+            plotprefdict = {"with_" : "linespoints lw 2"}
+    else:
+        plotprefdict = {"with_" : "linespoints" }
     # #draw iosize-spec graph
     # nthreadlistlist = [[r[0] for r in
     #                     conn.execute("select distinct nthread from {0}".format(tbl))]
@@ -73,7 +85,7 @@ if __name__ == "__main__":
                      "group by iosize,nthread".format(col, tbl))
             gds.extend(pu.query2data(conn, query, iosize = ios,
                                      title = "{0} {1} = {{{1}}}".format(tbl.split("_")[0], "iosize"),
-                                     with_ = "linespoints"))
+                                     **plotprefdict))
         sys.stdout.write('draw : {0}\n'.format(figpath))
         gp.plot(*gds)
     gp.close()

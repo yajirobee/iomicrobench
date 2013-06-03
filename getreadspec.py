@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-import sys, os, subprocess, shlex, re, sqlite3, itertools, time
+import sys, os, subprocess, shlex, re, sqlite3, itertools, time, glob
 
 class readbenchmarker(object):
     respatterns = {
@@ -113,7 +113,7 @@ def clear_cache():
         sys.exit(1)
 
 def sequentialreadbench(fpath, outdir, valdicts):
-    rbench = readbenchmarker(statoutdir = outdir)
+    rbench = readbenchmarker()
     rbench.cmdtmp = ("./sequentialread "
                      "-s {{iosize}} -i {{iterate}} -m {{nthread}} {0}".format(fpath))
     bname = os.path.splitext(os.path.basename(fpath))[0]
@@ -127,6 +127,12 @@ def sequentialreadbench(fpath, outdir, valdicts):
     for valdict in valdicts:
         clear_dev_buffer()
         clear_cache()
+        bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
+        direc = "{0}/sequential{1}".format(outdir, bname)
+        nums = [int(os.path.basename(d)) for d in glob.glob("{0}/[0-9]+".format(direc))]
+        n = max(nums) + 1 if nums else 0
+        rbench.statoutdir = "{0}/{1}".format(direc, n)
+        os.makedirs(rbench.statoutdir)
         res = rbench.run(valdict)
         res.update(valdict)
         recorder.insert(tblname, res)
@@ -146,6 +152,12 @@ def randomreadbench(fpath, outdir, valdicts):
     for valdict in valdicts:
         clear_dev_buffer()
         clear_cache()
+        bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
+        direc = "{0}/random{1}".format(outdir, bname)
+        nums = [int(os.path.basename(d)) for d in glob.glob("{0}/[0-9]".format(direc))]
+        n = max(nums) + 1 if nums else 0
+        rbench.statoutdir = "{0}/{1}".format(direc, n)
+        os.makedirs(rbench.statoutdir)
         res = rbench.run(valdict)
         res.update(valdict)
         recorder.insert(tblname, res)
