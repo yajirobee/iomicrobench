@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -19,9 +19,19 @@ struct {
   int block_size;
   int openflg;
   int nthread;
-  long iosize, iterate, fsize;
+  long iosize, maxiter, fsize;
+  double timeout;
   char *filepath;
+  long seekmax;
 } option;
+
+void
+printusage(const char *cmd)
+{
+  printf("Usage : %s [-d] [-s iosize] [-i maxiter] [-t timeout] "
+         "[-m nthread ] [-S fsize] filepath\n",
+         cmd);
+}
 
 void
 parsearg(int argc, char **argv)
@@ -33,10 +43,11 @@ parsearg(int argc, char **argv)
   option.openflg = O_RDONLY;
   option.nthread = 1;
   option.iosize = option.block_size;
-  option.iterate = 4096;
+  option.maxiter = 4096;
+  option.timeout = 60 * 60;
   option.fsize = -1;
 
-  while ((opt = getopt(argc, argv, "ds:i:m:S:")) != -1) {
+  while ((opt = getopt(argc, argv, "ds:i:t:m:S:")) != -1) {
     switch (opt) {
     case 'd':
       option.openflg |= O_DIRECT;
@@ -45,7 +56,10 @@ parsearg(int argc, char **argv)
       option.iosize = procsuffix(optarg);
       break;
     case 'i':
-      option.iterate = atol(optarg);
+      option.maxiter = atol(optarg);
+      break;
+    case 't':
+      option.timeout = atof(optarg);
       break;
     case 'm':
       option.nthread = atoi(optarg);
@@ -54,8 +68,7 @@ parsearg(int argc, char **argv)
       option.fsize = procsuffix(optarg);
       break;
     default:
-      printf("Usage : %s [-d] [-s iosize] [-i iterate] [-m nthread ] [-S fsize] filepath\n",
-             argv[0]);
+      printusage(argv[0]);
       exit(EXIT_FAILURE);
     }
   }
@@ -63,8 +76,7 @@ parsearg(int argc, char **argv)
   if (argc - 1 == optind) {
     option.filepath = argv[optind];
   } else {
-    printf("Usage : %s [-d] [-s iosize] [-i iterate] [-m nthread ] [-S fsize] filepath\n",
-           argv[0]);
+    printusage(argv[0]);
     exit(EXIT_FAILURE);
   }
 }
@@ -73,7 +85,7 @@ void
 random_read(randread_t *readinfo)
 {
   int i, tmp;
-  struct timeval stime, ftime;
+  struct timespec stime, ftime;
 
   //set affinity
   if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &readinfo->cpuset) != 0) {
@@ -81,26 +93,28 @@ random_read(randread_t *readinfo)
     exit(EXIT_FAILURE);
   }
 
-  GETTIMEOFDAY(&stime);
-  for (i = 0; i < readinfo->iterate; i++) {
-    random_r(&readinfo->random_states, &tmp);
-    pread(readinfo->fd, readinfo->buf, readinfo->iosize,
-          (tmp % readinfo->seekmax) * option.block_size);
-  }
-  GETTIMEOFDAY(&ftime);
-  readinfo->stime = TV2USEC(stime);
-  readinfo->ftime = TV2USEC(ftime);
+  CLOCK_GETTIME(&stime);
+  do {
+    for (i = 0; i < 1024; i++) {
+      random_r(&readinfo->random_states, &tmp);
+      pread(readinfo->fd, readinfo->buf, option.iosize,
+            (tmp % option.seekmax) * option.block_size);
+    }
+    readinfo->ops += 1024;
+    CLOCK_GETTIME(&ftime);
+  } while ((TIMEINTERVAL_SEC(stime, ftime) < option.timeout) &&
+           (readinfo->ops < option.maxiter));
+
+  readinfo->stime = TS2SEC(stime);
+  readinfo->ftime = TS2SEC(ftime);
 }
 
 int
 main(int argc, char **argv)
 {
   int i;
-  long seekmax;
   pthread_t *pt;
   randread_t *readinfos;
-  double stime, ftime;
-  double elatime, mbps, iops, latency = 0.0;
 
   parsearg(argc, argv);
   assert(option.iosize % option.block_size == 0);
@@ -121,14 +135,15 @@ main(int argc, char **argv)
 
   assert(option.fsize >= option.iosize);
 
+  fprintf(stderr, "Random read I/O microbenchmark\n");
   printf("io_size\t%ld\n"
-         "iteration\t%ld\n"
+         //"iteration\t%ld\n"
          "num_thread\t%d\n"
          "file_path\t%s\n"
          "enable_odirect\t%s\n"
          "target_size\t%ld\n",
          option.iosize,
-         option.iterate,
+         //option.maxiter,
          option.nthread,
          option.filepath,
          (option.openflg & O_DIRECT) ? "TRUE" : "FALSE",
@@ -136,9 +151,9 @@ main(int argc, char **argv)
 
   //set seekmax
   if (((option.fsize - option.iosize) / option.block_size) <= RAND_MAX) {
-    seekmax = (option.fsize - option.iosize) / option.block_size;
+    option.seekmax = (option.fsize - option.iosize) / option.block_size;
   } else {
-    seekmax = RAND_MAX;
+    option.seekmax = RAND_MAX;
   }
 
   // allocate memory for pthread_t
@@ -176,14 +191,11 @@ main(int argc, char **argv)
     CPU_ZERO(&readinfos[i].cpuset);
     for (j = 0; j < option.cpu_cores; j++) { CPU_SET(j, &readinfos[i].cpuset); }
 
-    readinfos[i].iosize = option.iosize;
-    readinfos[i].iterate = option.iterate;
     initstate_r(i + 1, readinfos[i].statebuf, PRNG_BUFSZ, &readinfos[i].random_states);
-    readinfos[i].seekmax = seekmax;
+    readinfos[i].ops = 0;
   }
 
   // random read
-  fprintf(stderr, "random read\n");
   for (i = 0; i < option.nthread; i++) {
     pthread_create(&pt[i], NULL,
                    (void *(*)(void *))random_read, (void *)(readinfos + i));
@@ -193,27 +205,35 @@ main(int argc, char **argv)
   }
 
   // get profile information
-  stime = readinfos[0].stime;
-  ftime = readinfos[0].ftime;
-  for (i = 1; i < option.nthread; i++) {
-    if (stime > readinfos[i].stime) { stime = readinfos[i].stime; }
-    if (ftime < readinfos[i].ftime) { ftime = readinfos[i].ftime; }
+  {
+    double stime, ftime;
+    long ops = 0;
+    double exectime, mbps, iops, latency = 0.0;
+
+    stime = readinfos[0].stime;
+    ftime = readinfos[0].ftime;
+    for (i = 1; i < option.nthread; i++) {
+      if (stime > readinfos[i].stime) { stime = readinfos[i].stime; }
+      if (ftime < readinfos[i].ftime) { ftime = readinfos[i].ftime; }
+    }
+    exectime = ftime - stime;
+    for (i = 0; i < option.nthread; i++) { ops += readinfos[i].ops; }
+    iops = ops / exectime;
+    mbps = (option.iosize * ops) / exectime / 1000000;
+    for (i = 0; i < option.nthread; i++){
+      latency += (readinfos[i].ftime - readinfos[i].stime);
+    }
+    latency /= ops;
+    printf("start_time\t%.9f\n"
+           "finish_time\t%.9f\n",
+           stime, ftime);
+    printf("exec_time_sec\t%.9f\n"
+           "total_ops\t%ld\n"
+           "mb_per_sec\t%f\n"
+           "io_per_sec\t%f\n"
+           "usec_per_io\t%f\n",
+           exectime, ops, mbps, iops, latency * 1000000);
   }
-  elatime = ftime - stime;
-  mbps = (option.iosize * option.iterate * option.nthread) / elatime;
-  iops = (option.iterate * option.nthread) / (elatime / 1000000);
-  for (i = 0; i < option.nthread; i++){
-    latency += (readinfos[i].ftime - readinfos[i].stime) / option.iterate;
-  }
-  latency /= option.nthread;
-  printf("start_time\t%.6f\n"
-         "finish_time\t%.6f\n",
-         stime / 1000000, ftime / 1000000);
-  printf("exec_time_usec\t%.1f\n"
-         "mb_per_sec\t%f\n"
-         "io_per_sec\t%f\n"
-         "usec_per_io\t%f\n",
-         elatime, mbps, iops, latency);
 
   for (i = 0; i < option.nthread; i++) {
     close(readinfos[i].fd);
