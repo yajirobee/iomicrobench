@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 import sys, os, sqlite3
-from plotutil import gpinit, query2data
+from plotutil import gpinit, query2gds
 
 slide = False
 
@@ -47,9 +47,9 @@ def plot_iosize_spec(dbpath, terminaltype = "png"):
             query = ("select iosize,avg({0}) from {1} "
                      "where nthread={{nthread}} and iosize <= 128 * 1024 "
                      "group by iosize,nthread".format(col, tbl))
-            gds.extend(query2data(conn, query, nthread = nth,
-                                  title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
-                                  with_ = "linespoints"))
+            gds.extend(query2gds(conn, query, nthread = nth,
+                                 title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
+                                 with_ = "linespoints"))
         sys.stdout.write('draw : {0}\n'.format(figpath))
         gp.plot(*gds)
     gp.close()
@@ -88,9 +88,9 @@ def plot_nthread_spec(dbpath, terminaltype = "png"):
         for tbl, ios in zip(tables, iosizelistlist):
             query = ("select nthread,avg({0}) from {1} where iosize={{iosize}} "
                      "group by iosize,nthread".format(col, tbl))
-            gds.extend(query2data(conn, query, iosize = ios,
-                                  title = "{0} {1} = {{{1}}}".format(tbl, "iosize"),
-                                  **plotprefdict))
+            gds.extend(query2gds(conn, query, iosize = ios,
+                                 title = "{0} {1} = {{{1}}}".format(tbl, "iosize"),
+                                 **plotprefdict))
         sys.stdout.write('draw : {0}\n'.format(figpath))
         gp.plot(*gds)
     gp.close()

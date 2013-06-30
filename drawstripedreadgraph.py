@@ -44,9 +44,9 @@ if __name__ == "__main__":
         for tbl, nth in zip(tables, nthreadlistlist):
             query = ("select nlu,{0} from {1} where nthread={{nthread}} and iosize={2}"
                      .format(col, tbl, iosize))
-            gds.extend(pu.query2data(conn, query, nthread = nth,
-                                     title = "{0} {1} = {{{1}}}".format(tbl, "nlu"),
-                                     with_ = "linespoints"))
+            gds.extend(pu.query2gds(conn, query, nthread = nth,
+                                    title = "{0} {1} = {{{1}}}".format(tbl, "nlu"),
+                                    with_ = "linespoints"))
         sys.stdout.write('draw : {0}\n'.format(figpath))
         gp.plot(*gds)
 
@@ -69,9 +69,9 @@ if __name__ == "__main__":
         for tbl, nlu in zip(tables, nlulistlist):
             query = ("select nthread,{0} from {1} where nlu={{nlu}} and iosize={2}"
                      .format(col, tbl, iosize))
-            gds.extend(pu.query2data(conn, query, nlu = nlu,
-                                     title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
-                                     with_ = "linespoints"))
+            gds.extend(pu.query2gds(conn, query, nlu = nlu,
+                                    title = "{0} {1} = {{{1}}}".format(tbl, "nthread"),
+                                    with_ = "linespoints"))
         sys.stdout.write('draw : {0}\n'.format(figpath))
         gp.plot(*gds)
     gp.close()

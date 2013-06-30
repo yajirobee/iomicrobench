@@ -43,7 +43,7 @@ if __name__ == "__main__":
         gds = []
         for tbl in tables:
             query = "select fsize,{0} from {1}".format(col, tbl)
-            gds.extend(pu.query2data(conn, query, with_ = "linespoints"))
+            gds.extend(pu.query2gds(conn, query, with_ = "linespoints"))
         sys.stdout.write('draw : {0}\n'.format(figpath))
         gp.plot(*gds)
 
