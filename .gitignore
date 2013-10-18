@@ -1,3 +1,7 @@
+sequentialread
+randomread
+ioreplayer
 img
 data
+*.o
 *.pyc

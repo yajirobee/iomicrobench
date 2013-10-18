@@ -32,7 +32,8 @@ if __name__ == "__main__":
 
     # random read
     sys.stdout.write("random read\n")
-    rbench.setcmd("./randomread")
+    prgdir = os.path.abspath(os.path.dirname(__file__) + "/../") + "/"
+    rbench.setcmd(prgdir + "randomread")
     randrecorder = iobench.iobenchrecorder(dbpath, "random_read",
                                            rbench.varnames, rbench.resnames,
                                            rbench.run)
