@@ -2,7 +2,7 @@
 
 import sys, os, shlex, re, sqlite3, itertools, time, glob
 import subprocess as sp
-from clearcache import *
+import clearcache
 
 class iobenchrecorder(object):
     def __init__(self, dbpath):
@@ -94,7 +94,7 @@ def doreadbench(fpath, outdir, benchexe, valdicts, statflg = False):
         recorder.createtable(tblname, columns)
         columns = [v[0] for v in columns]
     for valdict in valdicts:
-        clear_cache(2 ** 30)
+        clearcache.clear_cache(2 ** 30)
         if statflg:
             bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
             direc = os.path.join(outdir, tblname + bname)

@@ -16,14 +16,13 @@ def create_tasks_fromfile(filepath, mode):
         offset += iosize * iteration
     return tasks
 
-def create_workload(output, nthread):
+def create_workload(output, ntasks, nthread):
     readfiles = [os.path.join(datadir, "benchdata" + str(i)) for i in range(32)]
     writefiles = [os.path.join(datadir, "benchdata" + str(i)) for i in range(32, 64)]
-    numtasks = 4000
     readtasksdict = dict([(i, []) for i in range(nthread)])
     writetasksdict = dict([(i, []) for i in range(nthread)])
     with open(output, "w") as fo:
-        for i in range(numtasks):
+        for i in range(ntasks):
             idx = i % nthread
             if (i / nthread) % 2 = 0:
                 if not readtasksdict[idx]:
@@ -44,4 +43,4 @@ if __name__ == "__main__":
 
     output = sys.argv[1]
     nthread = int(sys.argv) if len(sys.argv) >= 3 else 1
-    create_workload(output, nthread)
+    create_workload(output, 4000, nthread)
