@@ -98,7 +98,7 @@ def doreadbench(fpath, outdir, cmdtmp, valdicts, statflg = False):
     rbench.cmdtmp = cmdtmp
     bname = os.path.splitext(os.path.basename(fpath))[0]
     recorder = iobenchrecorder("{0}/readspec_{1}.db".format(outdir, bname))
-    tblname = cmdtmp.split(None, 1)[0].rsplit("/", 1)[1]
+    tblname = os.path.basename(cmdtmp.split(None, 1)[0])
     if tblname in recorder.tbldict: columns = recorder.tbldict[tblname]
     else:
         columns = (("iosize", "integer"),
