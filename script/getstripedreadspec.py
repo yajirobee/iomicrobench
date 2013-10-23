@@ -40,10 +40,8 @@ class stripedreadbenchmarker(iobench.readbenchmarker):
                           .format(self.outdir, iosize, nthread, len(fpaths)))
             cpuprofpath = ("{0}/stripe_io{1}_thr{2}_lu{3}.cpu"
                            .format(self.outdir, iosize, nthread, len(fpaths)))
-            pio = subprocess.Popen(["iostat", "-x", "1"],
-                                   stdout = open(ioprofpath, "w"))
-            pcpu = subprocess.Popen(["mpstat", "-P", "ALL", "1"],
-                                    stdout = open(cpuprofpath, "w"))
+            pio = subprocess.Popen(["iostat", "-x", "1"], stdout = open(ioprofpath, "w"))
+            pcpu = subprocess.Popen(["mpstat", "-P", "ALL", "1"], stdout = open(cpuprofpath, "w"))
         try:
             for fpath, nth in zip(fpaths, nthreadlist):
                 ppool.append(subprocess.Popen(shlex.split(
@@ -107,10 +105,11 @@ measureinfos = ((9, 16, 10), (13, 13, 10), (16, 13, 7))
 if __name__ == "__main__":
     dbpath = "/data/local/keisuke/stripedreadspec.db"
     srbench = stripedreadbenchmarker(outdir)
+    prgdir = os.path.abspath(os.path.dirname(__file__) + "/../") + "/"
 
     # sequential read
     sys.stdout.write("sequential read\n")
-    srbench.cmd = "./sequentialread -s {iosize} -i {iterate} -m {nthread} {fpath}"
+    srbench.cmd = prgdir + "sequentialread -s {iosize} -i {iterate} -m {nthread} {fpath}"
     seqrecorder = iobenchrecorder(dbpath, "sequential_read",
                                   srbench.varnames, srbench.resnames,
                                   srbench.run)
@@ -126,7 +125,7 @@ if __name__ == "__main__":
 
     #random read
     sys.stdout.write("random read\n")
-    srbench.cmd = "./randomread -s {iosize} -i {iterate} -m {nthread} {fpath}"
+    srbench.cmd = prgdir + "randomread -s {iosize} -i {iterate} -m {nthread} {fpath}"
     randrecorder = iobenchrecorder(dbpath, "random_read",
                                    srbench.varnames, srbench.resnames,
                                    srbench.run)

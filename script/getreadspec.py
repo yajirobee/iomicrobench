@@ -1,7 +1,6 @@
 #! /usr/bin/env python
 
-import sys, os, shlex, re, sqlite3, itertools, time, glob
-import subprocess as sp
+import sys, os, subprocess, shlex, re, sqlite3, itertools, time, glob
 from clearcache import *
 
 class iobenchrecorder(object):
@@ -38,59 +37,41 @@ class readbenchmarker(object):
         self.statoutdir = statoutdir
         self.cmdtmp = None
 
-    def runmulti(self, valdict):
+    def run(self, valdict):
         if not self.cmdtmp:
             sys.stderr.write("Command template must be set.\n")
             return None
-        nthread = valdict["nthread"]
         bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
         cmd = self.cmdtmp.format(**valdict)
         if self.perfoutdir:
             perfout = "{0}/{1}.perf".format(self.perfoutdir, bname)
             cmd = self.perfcmd.format(perfout = perfout) + cmd
-        sys.stderr.write("start : {0} {1}\n".format(cmd.split(" ", 1)[0],
-                                                    ' '.join(["{0} = {1}".format(k, v)
-                                                              for k, v in valdict.items()])))
+        sys.stderr.write("start : {0}\n".format(cmd))
         if self.statoutdir:
             iostatout = "{0}/{1}.io".format(self.statoutdir, bname)
             mpstatout = "{0}/{1}.cpu".format(self.statoutdir, bname)
-            pio = sp.Popen(["iostat", "-x", "1"], stdout = open(iostatout, "w"))
-            pmp = sp.Popen(["mpstat", "-P", "ALL", "1"], stdout = open(mpstatout, "w"))
+            pio = subprocess.Popen(["iostat", "-x", "1"], stdout = open(iostatout, "w"))
+            pmp = subprocess.Popen(["mpstat", "-P", "ALL", "1"], stdout = open(mpstatout, "w"))
         try:
-            procs = [sp.Popen(shlex.split(cmd + str(i)),
-                              stdout = sp.PIPE, stderr = open("/dev/null", "w"))
-                     for i in range(nthread)]
-            for p in procs:
-                if p.wait() != 0:
-                    sys.stderr.write("measure failed : {0}\n".format(p.returncode))
-                    sys.exit(1)
+            p = subprocess.Popen(shlex.split(cmd), stdout = subprocess.PIPE)
+            if p.wait() != 0:
+                sys.stderr.write("measure failed : {0}\n".format(p.returncode))
+                sys.exit(1)
         finally:
             if self.statoutdir:
                 pio.kill()
                 pmp.kill()
         res = {}
         respattern = re.compile(r"([a-z_]+)\s(\d+(?:\.\d*)?)")
-        reskeys = ["start_time", "finish_time", "total_ops"]
-        for k in reskeys: res[k] = []
-        for p in procs:
-            for line in p.stdout:
-                line = line.rstrip()
-                match = respattern.match(line)
-                if match and match.group(1) in res:
-                    res[match.group(1)].append(float(match.group(2)))
-
-        for key in reskeys:
-            assert len(res[key]) == nthread, "could not collect result : " + key
-        res["exec_time_sec"] = max(res["finish_time"]) - min(res["start_time"])
-        res["bench_time_sec"] = min(res["finish_time"]) - max(res["start_time"])
-        res["total_ops"] = sum(res["total_ops"])
-        res["io_per_sec"] = res["total_ops"] / res["exec_time_sec"]
-        res["mb_per_sec"] = res["io_per_sec"] * valdict["iosize"] / 2 ** 20
-        res["usec_per_io"] = res["exec_time_sec"] * (10 ** 6) / res["total_ops"]
-        del res["start_time"], res["finish_time"]
-        for key in ["exec_time_sec", "bench_time_sec", "total_ops",
-                    "io_per_sec", "mb_per_sec", "usec_per_io"]:
-            sys.stderr.write("  {0} : {1}\n".format(key, res[key]))
+        reskeys = ["exec_time_sec", "total_ops",
+                   "mb_per_sec", "io_per_sec", "usec_per_io"]
+        for k in reskeys: res[k] = None
+        for line in p.stdout:
+            sys.stderr.write("  {0}".format(line))
+            line = line.rstrip()
+            match = respattern.match(line)
+            if match and match.group(1) in res:
+                res[match.group(1)] = float(match.group(2))
         return res
 
 def doreadbench(fpath, outdir, cmdtmp, valdicts, statflg = False):
@@ -112,7 +93,7 @@ def doreadbench(fpath, outdir, cmdtmp, valdicts, statflg = False):
         recorder.createtable(tblname, columns)
         columns = [v[0] for v in columns]
     for valdict in valdicts:
-        clear_cache(2 ** 35)
+        clear_cache(2 ** 30)
         if statflg:
             bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
             direc = "{0}/{1}{2}".format(outdir, tblname, bname)
@@ -121,60 +102,47 @@ def doreadbench(fpath, outdir, cmdtmp, valdicts, statflg = False):
             os.makedirs(rbench.statoutdir)
             rbench.statoutdir = "{0}/{1}".format(direc, n)
         else: rbench.statoutdir = None
-        res = rbench.runmulti(valdict)
+        res = rbench.run(valdict)
         res.update(valdict)
         del res["timeout"], res["iterate"]
         recorder.insert(tblname, res)
 
-def main(datadir):
-    iomax = 2 ** 38
+def main(fpath):
+    iomax = 2 ** 36
     timeout = 30
     iosizes = [2 ** i for i in range(9, 22)]
-    nthreads = [2 ** i for i in range(7)]
-    maxnthread = max(nthreads)
-    maxfsize = iomax / maxnthread
+    nthreads = [2 ** i for i in range(11)]
     valdicts = []
     for vals in itertools.product(iosizes, nthreads):
         valdicts.append({"iosize" : vals[0],
                          "nthread" : vals[1],
                          "timeout": timeout,
-                         "iterate": maxfsize / vals[0]})
+                         "iterate": iomax / (vals[0] * vals[1])})
+    prgdir = os.path.abspath(os.path.dirname(__file__) + "/../") + "/"
     outdir = "/data/local/keisuke/{0}".format(time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     os.mkdir(outdir)
-    fpath = "{0}/benchdata".format(datadir)
-    # for i in range(max(nthreads)):
-    #     procs = [sp.Popen(["util/genbenchdata",
-    #                        fpath + str(i),
-    #                        str(iomax / max(nthreads))])]
-    #     for p in procs:
-    #         if p.wait() != 0:
-    #             sys.stderr.write("measure failed : {0}\n".format(p.returncode))
-    #             sys.exit(1)
 
     for i in range(5):
         # sequential read
         sys.stdout.write("sequential read\n")
-        cmdtmp = ("./sequentialread "
-                  "-s {{iosize}} -m 1 "
+        cmdtmp = (prgdir + "sequentialread "
+                  "-s {{iosize}} -m {{nthread}} "
                   "-i {{iterate}} -t {{timeout}} {0}".format(fpath))
         doreadbench(fpath, outdir, cmdtmp, valdicts)
         time.sleep(300)
 
         # random read
         sys.stdout.write("random read\n")
-        cmdtmp = ("./randomread "
-                  "-s {{iosize}} -m 1 "
+        cmdtmp = (prgdir + "randomread "
+                  "-s {{iosize}} -m {{nthread}} "
                   "-i {{iterate}} -t {{timeout}} {0}".format(fpath))
         doreadbench(fpath, outdir, cmdtmp, valdicts)
         time.sleep(300)
-
-    sp.call(["/bin/rm", fpath + "/*"])
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.stdout.write("Usage : {0} fpath\n".format(sys.argv[0]))
         sys.exit(0)
-    datadir = sys.argv[1]
-    assert os.path.isdir(datadir), "datadir does not exist"
+    fpath = sys.argv[1]
 
-    main(datadir)
+    main(fpath)
