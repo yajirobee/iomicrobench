@@ -14,7 +14,7 @@ class readbenchmarker(object):
         self.statoutdir = None
 
     def runmulti(self, valdict):
-        assert self.cmdtpm, "Command template must be set.\n"
+        assert self.cmdtmp, "Command template must be set."
         nthread = valdict["nthread"]
         bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
         cmd = self.cmdtmp.format(**valdict)
@@ -27,9 +27,16 @@ class readbenchmarker(object):
         if self.statoutdir:
             iostatout = os.path.join(self.statoutdir, bname + ".io")
             mpstatout = os.path.join(self.statoutdir, bname + ".cpu")
-            pio = sp.Popen(["iostat", "-x", "1"], stdout = open(iostatout, "w"))
-            pmp = sp.Popen(["mpstat", "-P", "ALL", "1"], stdout = open(mpstatout, "w"))
-        try:
+            import profileutils
+            with profileutils.cpuio_stat_watcher(iostatout, mpstatout):
+                procs = [sp.Popen(shlex.split(cmd + str(i)),
+                                  stdout = sp.PIPE, stderr = open("/dev/null", "w"))
+                         for i in range(nthread)]
+                for p in procs:
+                    if p.wait() != 0:
+                        sys.stderr.write("measure failed : {0}\n".format(p.returncode))
+                        sys.exit(1)
+        else:
             procs = [sp.Popen(shlex.split(cmd + str(i)),
                               stdout = sp.PIPE, stderr = open("/dev/null", "w"))
                      for i in range(nthread)]
@@ -37,16 +44,15 @@ class readbenchmarker(object):
                 if p.wait() != 0:
                     sys.stderr.write("measure failed : {0}\n".format(p.returncode))
                     sys.exit(1)
-        finally:
-            if self.statoutdir:
-                pio.kill()
-                pmp.kill()
+        return self.proc_result([p.stdout for p in procs])
+
+    def proc_result(self, outputs)
         res = {}
         respattern = re.compile(r"([a-z_]+)\s(\d+(?:\.\d*)?)")
         reskeys = ["start_time", "finish_time", "total_ops"]
         for k in reskeys: res[k] = []
-        for p in procs:
-            for line in p.stdout:
+        for output in outputs:
+            for line in output:
                 line = line.rstrip()
                 match = respattern.match(line)
                 if match and match.group(1) in res:
@@ -71,7 +77,7 @@ def doreadbench(fpath, outdir, benchexe, valdicts, statflg = False):
     rbench = readbenchmarker(cmdtmp)
     bname = os.path.splitext(os.path.basename(fpath))[0]
     recorder = iobenchrecorder(os.path.join(outdir, "readspec_{0}.db".format(bname)))
-    tblname = os.path.basename(cmdtmp.split(None, 1)[0])
+    tblname = os.path.basename(benchexe)
     if tblname in recorder.tbldict: columns = recorder.tbldict[tblname]
     else:
         columns = (("iosize", "integer"),
@@ -112,6 +118,7 @@ def main(datadir):
                          "nthread" : vals[1],
                          "timeout": timeout,
                          "iterate": maxfsize / vals[0]})
+
     prgdir = os.path.abspath(os.path.dirname(__file__) + "/../")
     outdir = "/data/local/keisuke/{0}".format(time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     os.mkdir(outdir)
