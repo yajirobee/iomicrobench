@@ -8,15 +8,13 @@ from clearcache import *
 class readbenchmarker(object):
     perfcmd = "perf stat -a -o {perfout} -- "
 
-    def __init__(self, perfoutdir = None, statoutdir = None):
-        self.perfoutdir = perfoutdir
-        self.statoutdir = statoutdir
-        self.cmdtmp = None
+    def __init__(self, cmdtmp):
+        self.cmdtmp = cmdtmp
+        self.perfoutdir = None
+        self.statoutdir = None
 
     def runmulti(self, valdict):
-        if not self.cmdtmp:
-            sys.stderr.write("Command template must be set.\n")
-            return None
+        assert self.cmdtpm, "Command template must be set.\n"
         nthread = valdict["nthread"]
         bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
         cmd = self.cmdtmp.format(**valdict)
@@ -68,9 +66,9 @@ class readbenchmarker(object):
             sys.stderr.write("  {0} : {1}\n".format(key, res[key]))
         return res
 
-def doreadbench(fpath, outdir, cmdtmp, valdicts, statflg = False):
-    rbench = readbenchmarker()
-    rbench.cmdtmp = cmdtmp
+def doreadbench(fpath, outdir, benchexe, valdicts, statflg = False):
+    cmdtmp = benchexe + " -s {iosize} -m 1 -i {iterate} -t {timeout} " + fpath
+    rbench = readbenchmarker(cmdtmp)
     bname = os.path.splitext(os.path.basename(fpath))[0]
     recorder = iobenchrecorder(os.path.join(outdir, "readspec_{0}.db".format(bname)))
     tblname = os.path.basename(cmdtmp.split(None, 1)[0])
@@ -114,7 +112,7 @@ def main(datadir):
                          "nthread" : vals[1],
                          "timeout": timeout,
                          "iterate": maxfsize / vals[0]})
-    prgdir = os.path.abspath(os.path.dirname(__file__) + "/../") + "/"
+    prgdir = os.path.abspath(os.path.dirname(__file__) + "/../")
     outdir = "/data/local/keisuke/{0}".format(time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     os.mkdir(outdir)
     fpath = os.path.join(datadir, "benchdata")
@@ -130,18 +128,12 @@ def main(datadir):
     for i in range(5):
         # sequential read
         sys.stdout.write("sequential read\n")
-        cmdtmp = (prgdir + "sequentialread "
-                  "-s {{iosize}} -m 1 "
-                  "-i {{iterate}} -t {{timeout}} {0}".format(fpath))
-        doreadbench(fpath, outdir, cmdtmp, valdicts, True)
+        doreadbench(fpath, outdir, os.path.join(prgdir, "sequentialread"), valdicts, True)
         time.sleep(300)
 
         # random read
         sys.stdout.write("random read\n")
-        cmdtmp = (prgdir + "randomread "
-                  "-s {{iosize}} -m 1 "
-                  "-i {{iterate}} -t {{timeout}} {0}".format(fpath))
-        doreadbench(fpath, outdir, cmdtmp, valdicts, True)
+        doreadbench(fpath, outdir, os.path.join(prgdir, "randomread"), valdicts, True)
         time.sleep(300)
 
     #sp.call(["/bin/rm", fpath + "*"])
