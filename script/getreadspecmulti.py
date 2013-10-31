@@ -21,14 +21,14 @@ class readbenchmarker(object):
         bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
         cmd = self.cmdtmp.format(**valdict)
         if self.perfoutdir:
-            perfout = "{0}/{1}.perf".format(self.perfoutdir, bname)
+            perfout = os.path.join(self.perfoutdir, bname + ".perf")
             cmd = self.perfcmd.format(perfout = perfout) + cmd
         sys.stderr.write("start : {0} {1}\n".format(cmd.split(" ", 1)[0],
                                                     ' '.join(["{0} = {1}".format(k, v)
                                                               for k, v in valdict.items()])))
         if self.statoutdir:
-            iostatout = "{0}/{1}.io".format(self.statoutdir, bname)
-            mpstatout = "{0}/{1}.cpu".format(self.statoutdir, bname)
+            iostatout = os.path.join(self.statoutdir, bname + ".io")
+            mpstatout = os.path.join(self.statoutdir, bname + ".cpu")
             pio = sp.Popen(["iostat", "-x", "1"], stdout = open(iostatout, "w"))
             pmp = sp.Popen(["mpstat", "-P", "ALL", "1"], stdout = open(mpstatout, "w"))
         try:
@@ -72,7 +72,7 @@ def doreadbench(fpath, outdir, cmdtmp, valdicts, statflg = False):
     rbench = readbenchmarker()
     rbench.cmdtmp = cmdtmp
     bname = os.path.splitext(os.path.basename(fpath))[0]
-    recorder = iobenchrecorder("{0}/readspec_{1}.db".format(outdir, bname))
+    recorder = iobenchrecorder(os.path.join(outdir, "readspec_{0}.db".format(bname)))
     tblname = os.path.basename(cmdtmp.split(None, 1)[0])
     if tblname in recorder.tbldict: columns = recorder.tbldict[tblname]
     else:
@@ -90,11 +90,11 @@ def doreadbench(fpath, outdir, cmdtmp, valdicts, statflg = False):
         clear_cache(2 ** 35)
         if statflg:
             bname = '_'.join([str(k) + str(v) for k, v in valdict.items()]) if valdict else "record"
-            direc = "{0}/{1}{2}".format(outdir, tblname, bname)
-            nums = [int(os.path.basename(d)) for d in glob.glob("{0}/[0-9]*".format(direc))]
+            direc = os.path.join(outdir, tblname + bname)
+            nums = [int(os.path.basename(d)) for d in glob.glob(os.path.join(direc, "[0-9]*"))]
             n = max(nums) + 1 if nums else 0
+            rbench.statoutdir = os.path.join(direc, str(n))
             os.makedirs(rbench.statoutdir)
-            rbench.statoutdir = "{0}/{1}".format(direc, n)
         else: rbench.statoutdir = None
         res = rbench.runmulti(valdict)
         res.update(valdict)
@@ -117,7 +117,7 @@ def main(datadir):
     prgdir = os.path.abspath(os.path.dirname(__file__) + "/../") + "/"
     outdir = "/data/local/keisuke/{0}".format(time.strftime("%Y%m%d%H%M%S", time.gmtime()))
     os.mkdir(outdir)
-    fpath = "{0}/benchdata".format(datadir)
+    fpath = os.path.join(datadir, "benchdata")
     # for i in range(max(nthreads)):
     #     procs = [sp.Popen(["util/genbenchdata",
     #                        fpath + str(i),
@@ -133,7 +133,7 @@ def main(datadir):
         cmdtmp = (prgdir + "sequentialread "
                   "-s {{iosize}} -m 1 "
                   "-i {{iterate}} -t {{timeout}} {0}".format(fpath))
-        doreadbench(fpath, outdir, cmdtmp, valdicts)
+        doreadbench(fpath, outdir, cmdtmp, valdicts, True)
         time.sleep(300)
 
         # random read
@@ -141,10 +141,10 @@ def main(datadir):
         cmdtmp = (prgdir + "randomread "
                   "-s {{iosize}} -m 1 "
                   "-i {{iterate}} -t {{timeout}} {0}".format(fpath))
-        doreadbench(fpath, outdir, cmdtmp, valdicts)
+        doreadbench(fpath, outdir, cmdtmp, valdicts, True)
         time.sleep(300)
 
-    sp.call(["/bin/rm", fpath + "/*"])
+    #sp.call(["/bin/rm", fpath + "*"])
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
