@@ -307,8 +307,8 @@ main(int argc, char **argv)
     usptsk = exectime * 1000000 / operatedtasks;
     riops = totalrops / exectime;
     wiops = totalwops / exectime;
-    rmbps = totalrbyte / exectime;
-    wmbps = totalwbyte / exectime;
+    rmbps = totalrbyte / 1000000 / exectime;
+    wmbps = totalwbyte / 1000000 / exectime;
     ruspio = (totalrops == 0.0) ? 0.0 : exectime * 1000000 / totalrops;
     wuspio = (totalwops == 0.0) ? 0.0 : exectime * 1000000 / totalwops;
 
