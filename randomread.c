@@ -12,11 +12,20 @@
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
-#include "iomicrobench.h"
+#include "util.h"
+
+typedef struct {
+  int fd;
+  char *buf;
+  double stime, ftime;
+  long ops;
+  cpu_set_t cpuset;
+  struct random_data random_states;
+  char statebuf[PRNG_BUFSZ];
+} randread_t;
 
 struct {
   int cpu_cores;
-  int block_size;
   int openflg;
   int nthread;
   long iosize, maxiter, fsize;
@@ -39,10 +48,9 @@ parsearg(int argc, char **argv)
   int opt;
 
   option.cpu_cores = sysconf(_SC_NPROCESSORS_ONLN);
-  option.block_size = 512;
   option.openflg = O_RDONLY;
   option.nthread = 1;
-  option.iosize = option.block_size;
+  option.iosize = BLOCK_SIZE;
   option.maxiter = 4096;
   option.timeout = 60 * 60;
   option.fsize = -1;
@@ -75,10 +83,51 @@ parsearg(int argc, char **argv)
 
   if (argc - 1 == optind) {
     option.filepath = argv[optind];
-  } else {
+  }
+  else {
     printusage(argv[0]);
     exit(EXIT_FAILURE);
   }
+
+  // check file size
+  if (-1 == option.fsize) {
+    int fd;
+    if ((fd = open(option.filepath, O_RDONLY)) < 0) {
+      perror("open");
+      exit(EXIT_FAILURE);
+    }
+    if ((option.fsize = lseek(fd, 0, SEEK_END)) < 0) {
+      perror("lseek");
+      exit(EXIT_FAILURE);
+    }
+    close(fd);
+  }
+
+  //set seekmax
+  if (((option.fsize - option.iosize) / BLOCK_SIZE) <= RAND_MAX) {
+    option.seekmax = (option.fsize - option.iosize) / BLOCK_SIZE;
+  }
+  else {
+    option.seekmax = RAND_MAX;
+  }
+
+  fprintf(stderr, "Random read I/O microbenchmark\n");
+  // print options
+  printf("io_size\t%ld\n"
+         //"iteration\t%ld\n"
+         "num_thread\t%d\n"
+         "file_path\t%s\n"
+         "enable_odirect\t%s\n"
+         "target_size\t%ld\n",
+         option.iosize,
+         //option.maxiter,
+         option.nthread,
+         option.filepath,
+         (option.openflg & O_DIRECT) ? "TRUE" : "FALSE",
+         option.fsize);
+
+  assert(option.iosize % BLOCK_SIZE == 0);
+  assert(option.fsize >= option.iosize);
 }
 
 void
@@ -98,7 +147,7 @@ random_read(randread_t *readinfo)
     for (i = 0; i < 1024; i++) {
       random_r(&readinfo->random_states, &tmp);
       pread(readinfo->fd, readinfo->buf, option.iosize,
-            (tmp % option.seekmax) * option.block_size);
+            (tmp % option.seekmax) * BLOCK_SIZE);
     }
     readinfo->ops += 1024;
     CLOCK_GETTIME(&ftime);
@@ -117,56 +166,18 @@ main(int argc, char **argv)
   randread_t *readinfos;
 
   parsearg(argc, argv);
-  assert(option.iosize % option.block_size == 0);
-
-  // check file size
-  if (-1 == option.fsize) {
-    int fd;
-    if ((fd = open(option.filepath, O_RDONLY)) < 0) {
-      perror("open");
-      exit(EXIT_FAILURE);
-    }
-    if ((option.fsize = lseek(fd, 0, SEEK_END)) < 0) {
-      perror("lseek");
-      exit(EXIT_FAILURE);
-    }
-    close(fd);
-  }
-
-  assert(option.fsize >= option.iosize);
-
-  fprintf(stderr, "Random read I/O microbenchmark\n");
-  printf("io_size\t%ld\n"
-         //"iteration\t%ld\n"
-         "num_thread\t%d\n"
-         "file_path\t%s\n"
-         "enable_odirect\t%s\n"
-         "target_size\t%ld\n",
-         option.iosize,
-         //option.maxiter,
-         option.nthread,
-         option.filepath,
-         (option.openflg & O_DIRECT) ? "TRUE" : "FALSE",
-         option.fsize);
-
-  //set seekmax
-  if (((option.fsize - option.iosize) / option.block_size) <= RAND_MAX) {
-    option.seekmax = (option.fsize - option.iosize) / option.block_size;
-  } else {
-    option.seekmax = RAND_MAX;
-  }
 
   // allocate memory for pthread_t
-  if (posix_memalign((void **)&pt,
-                     option.block_size,
+  if (posix_memalign((void **) &pt,
+                     BLOCK_SIZE,
                      sizeof(pthread_t) * option.nthread) != 0) {
     perror("posix_memalign");
     exit(EXIT_FAILURE);
   }
 
   // allocate memory for readinfo
-  if (posix_memalign((void **)&readinfos,
-                     option.block_size,
+  if (posix_memalign((void **) &readinfos,
+                     BLOCK_SIZE,
                      sizeof(randread_t) * option.nthread) != 0) {
     perror("posix_memalign");
     exit(EXIT_FAILURE);
@@ -176,9 +187,7 @@ main(int argc, char **argv)
   for (i = 0; i < option.nthread; i++) {
     int j;
     // allocate buffer aligned by BLOCK_SIZE
-    if (posix_memalign((void **)&readinfos[i].buf,
-                       option.block_size,
-                       option.iosize) != 0) {
+    if (posix_memalign((void **) &readinfos[i].buf, BLOCK_SIZE, option.iosize) != 0) {
       perror("posix_memalign");
       exit(EXIT_FAILURE);
     }
@@ -204,7 +213,7 @@ main(int argc, char **argv)
     pthread_join(pt[i], NULL);
   }
 
-  // get profile information
+  // print statistics information
   {
     double stime, ftime;
     long ops = 0;

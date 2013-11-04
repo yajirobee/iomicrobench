@@ -4,282 +4,333 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <errno.h>
-#include <unistd.h>
-#include <assert.h>
+#include <time.h>
 #include <pthread.h>
+#include <ctype.h>
 #include <signal.h>
+#include <errno.h>
+#include <assert.h>
+
 #include "ioreplayer.h"
+#include "arrayqueue.h"
+#include "util.h"
 
-//
-// implement queue
-//
+struct {
+  int cpu_cores;
+  int openflg;
+  int nthread;
+  char *iodumpfile;
+  long quelength;
+  long bufsize;
+} option;
 
-void initque(queue_t *que, size_t limit){
-  if ((que->a = (rinfo_t *)calloc(limit, sizeof(rinfo_t))) == NULL){
-    perror("malloc");
-    exit(0);
+void
+printusage(const char *cmd)
+{
+  fprintf(stderr, "Usage : %s [-d] [-m nthread] [-q queue_length] iodumpfile\n", cmd);
+}
+
+void
+parsearg(int argc, char **argv)
+{
+  int opt;
+
+  option.cpu_cores = sysconf(_SC_NPROCESSORS_ONLN);
+  option.openflg = O_RDWR;
+  option.nthread = 1;
+  option.iodumpfile = NULL;
+  option.quelength = 1 << 18;
+  option.bufsize = 1 << 22;
+
+  while ((opt = getopt(argc, argv, "dm:q:")) != -1) {
+    switch (opt) {
+    case 'd':
+      option.openflg |= O_DIRECT;
+      break;
+    case 'm':
+      option.nthread = atoi(optarg);
+      break;
+    case 'q':
+      option.quelength = procsuffix(optarg);
+      break;
+    default:
+      printusage(argv[0]);
+      exit(EXIT_FAILURE);
+    }
   }
-  que->limit = limit;
-  que->head = 0;
-  que->tail = 0;
-  que->size = 0;
-  pthread_mutex_init(&que->mtx, NULL);
-  pthread_cond_init(&que->more, NULL);
-  pthread_cond_init(&que->less, NULL);
-}
 
-void delque(queue_t *que){
-  free(que->a);
-}
+  if (optind == argc - 1) {
+    option.iodumpfile = argv[optind];
+  }
+  else {
+    printusage(argv[0]);
+    exit(EXIT_FAILURE);
+  }
 
-void push(queue_t *que, rinfo_t *rinfo){
-  assert(que->limit > que->size);
-  que->a[que->tail++] = *rinfo;
-  if (que->tail >= que->limit){ que->tail = 0; } // que->tail %= que->limit;
-  que->size++;
-}
-
-rinfo_t pop(queue_t *que){
-  rinfo_t head;
-
-  assert(que->size > 0);
-  head = que->a[que->head++];
-  if (que->head >= que->limit){ que->head = 0; } // que->head %= que->limit;
-  que->size--;
-  return head;
+  // print options
+  printf("iodump_file\t%s\n"
+         "num_thread\t%d\n"
+         "enable_odirect\t%s\n"
+         "task_queue_length\t%ld\n",
+         option.iodumpfile,
+         option.nthread,
+         (option.openflg & O_DIRECT) ? "TRUE" : "FALSE",
+         option.quelength);
 }
 
 //
-// replaying read operation on multiple threads
+// replaying io operation on multiple threads
 //
 
-void reader(tskcnf_t *cnf){
-  rinfo_t rinfo;
+void
+ioreplayer(task_queue_t *tskque, char *buf, stats_t *stats)
+{
+  int i;
+  iotask_t *curtask;
+  int fd;
+
+  // perform read operation
+  while (1){
+    pthread_mutex_lock(&tskque->control.mtx);
+    while (queue_isempty(&tskque->tasks) && tskque->control.active) {
+      pthread_cond_wait(&tskque->control.more, &tskque->control.mtx);
+    }
+    if (queue_isempty(&tskque->tasks) && !tskque->control.active) {
+      pthread_mutex_unlock(&tskque->control.mtx);
+      break;
+    }
+    curtask = (iotask_t *) queue_pop(&tskque->tasks);
+    pthread_cond_signal(&tskque->control.less);
+    pthread_mutex_unlock(&tskque->control.mtx);
+    stats->operated_tasks++;
+    fd = open(curtask->filepath, option.openflg);
+    lseek(fd, curtask->offset, SEEK_SET);
+    switch (curtask->iotype) {
+    case READ_IO:
+      for (i = 0; i < curtask->iteration; i++) { read(fd, buf, curtask->iosize); }
+      stats->read_ops += i;
+      stats->read_byte += curtask->iosize * i;
+      break;
+    case WRITE_IO:
+      for (i = 0; i < curtask->iteration; i++) { write(fd, buf, curtask->iosize); }
+      stats->write_ops += i;
+      stats->write_byte += curtask->iosize * i;
+      break;
+    default:
+      fprintf(stderr, "invalid task type: %c\n", curtask->iotype);
+    }
+    free(curtask);
+  }
+}
+
+void *
+thread_worker(void *args)
+{
+  threadconf_t *cnf = (threadconf_t *) args;
+  task_queue_t *tskque = cnf->iotaskque;
+  cleanup_queue_t *cleanupque = cnf->cleanupque;
 
   // set affinity
   if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cnf->cpuset) != 0){
     perror("pthread_setaffinity_np()");
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
-  // perform read operation
-  while (1){
-    pthread_mutex_lock(&cnf->rinfoque->mtx);
-    if (cnf->rinfoque->size == 0){
-      if (++cnf->waitmng->nwait == cnf->waitmng->nthread){
-        pthread_cond_signal(&cnf->waitmng->cnd);
-      }
-      do {
-        pthread_cond_wait(&cnf->rinfoque->more, &cnf->rinfoque->mtx);
-        if (cnf->waitmng->nwait == -1){
-          pthread_mutex_unlock(&cnf->rinfoque->mtx);
-          pthread_exit(NULL);
-        }
-      } while (cnf->rinfoque->size == 0);
-      --cnf->waitmng->nwait;
-    }
-    rinfo = pop(cnf->rinfoque);
-    pthread_cond_signal(&cnf->rinfoque->less);
-    pthread_mutex_unlock(&cnf->rinfoque->mtx);
-
-    pread(cnf->fd, cnf->buf, cnf->iosize, rinfo.offset);
-  }
+  ioreplayer(tskque, cnf->buf, &cnf->stats);
+  pthread_mutex_lock(&cleanupque->mtx);
+  queue_push(&cleanupque->finthreads, cnf);
+  pthread_cond_signal(&cleanupque->cnd);
+  pthread_mutex_unlock(&cleanupque->mtx);
+  pthread_exit(NULL);
 }
 
-int getnext(FILE *fp, rinfo_t *rinfo){
-  static int count = 0;
-  off_t offset;
-  char buf[MAX_STRING];
+// task is expressed like following
+// filepath, [R|W], offset, iosize, iteration
+iotask_t *
+getnext(FILE *fp){
+  int i;
+  char buf[MAX_ROW_LENGTH], *bufptr;
+  iotask_t *task;
 
-  if (rinfo == NULL){ return count; }
-  if (fgets(buf, MAX_STRING, fp) != NULL){
-    count++;
-    offset = atol(buf);
-    rinfo->offset = offset;
-    return count;
+  if ((task = (iotask_t *) malloc(sizeof(iotask_t))) == NULL) {
+    perror("malloc");
+    return NULL;
+  }
+
+  if (fgets(buf, MAX_ROW_LENGTH, fp) != NULL) {
+    for (i = 0; !(buf[i] == ',' || isblank(buf[i])); i++) { }
+    memcpy(task->filepath, buf, i);
+    for (; buf[i] == ',' || isblank(buf[i]); i++) { }
+    task->iotype = buf[i++];
+    for (; buf[i] == ',' || isblank(buf[i]); i++) { }
+    task->offset = strtol(&buf[i], &bufptr, 10);
+    for (i = 0; bufptr[i] == ',' || isblank(bufptr[i]); i++) { }
+    task->iosize = strtol(&bufptr[i], &bufptr, 10);
+    for (i = 0; bufptr[i] == ',' || isblank(bufptr[i]); i++) { }
+    task->iteration = strtol(&bufptr[i], NULL, 10);
+    return task;
   }
   else {
-    return -1;
+    return NULL;
   }
 }
 
-void read_replayer(int nthread, tskcnf_t *tskcnfs, FILE *fp){
+long
+iotaskproducer(task_queue_t *tskque)
+{
+  long numtasks = 0;
+  iotask_t *curtask;
+  FILE *fp = fopen(option.iodumpfile, "r");
+
+  for (curtask = getnext(fp); curtask != NULL; curtask = getnext(fp)) {
+    pthread_mutex_lock(&tskque->control.mtx);
+    while (queue_isfull(&tskque->tasks)) {
+      pthread_cond_wait(&tskque->control.less, &tskque->control.mtx);
+    }
+    queue_push(&tskque->tasks, curtask);
+    numtasks++;
+    pthread_cond_signal(&tskque->control.more);
+    pthread_mutex_unlock(&tskque->control.mtx);
+  }
+  fclose(fp);
+  return numtasks;
+}
+
+long
+replayio(int nthread, threadconf_t *thrdcnfs)
+{
   int i;
-  rinfo_t rinfo;
-  queue_t *que = tskcnfs[0].rinfoque;
-  waitmng_t *waitmng = tskcnfs[0].waitmng;
+  long generatedtasks;
+  task_queue_t *tskque = thrdcnfs[0].iotaskque;
+  cleanup_queue_t *cleanupque = thrdcnfs[0].cleanupque;
+  threadconf_t *curthread;
 
-  // create reader threads
+  // create replayer threads
   for (i = 0; i < nthread; i++){
-    pthread_create(&tskcnfs[i].pt, NULL,
-                   (void *(*)(void *))reader, (void *)&tskcnfs[i]);
+    pthread_create(&thrdcnfs[i].pt, NULL,
+                   thread_worker, (void *)&thrdcnfs[i]);
   }
 
-  for (i = getnext(fp, &rinfo); i >= 0; i = getnext(fp, &rinfo)){
-    pthread_mutex_lock(&que->mtx);
-    while (que->size >= que->limit){ pthread_cond_wait(&que->less, &que->mtx); }
-    push(que, &rinfo);
-    pthread_cond_signal(&que->more);
-    pthread_mutex_unlock(&que->mtx);
+  generatedtasks = iotaskproducer(tskque);
+  control_deactivate(&tskque->control);
+
+  // join replayer threads
+  for (i = nthread; i > 0; i--) {
+    pthread_mutex_lock(&cleanupque->mtx);
+    while (queue_isempty(&cleanupque->finthreads)){
+      pthread_cond_wait(&cleanupque->cnd, &cleanupque->mtx);
+    }
+    curthread = (threadconf_t *) queue_pop(&cleanupque->finthreads);
+    pthread_mutex_unlock(&cleanupque->mtx);
+    pthread_join(curthread->pt, NULL);
   }
-  pthread_mutex_lock(&waitmng->mtx);
-  while (waitmng->nwait < waitmng->nthread){
-    pthread_cond_wait(&waitmng->cnd, &waitmng->mtx);
-  }
-  pthread_mutex_unlock(&waitmng->mtx);
-  waitmng->nwait = -1;
-  pthread_mutex_lock(&que->mtx);
-  pthread_cond_broadcast(&que->more);
-  pthread_mutex_unlock(&que->mtx);
-  for (i = 0; i < nthread; i++){
-    pthread_join(tskcnfs[i].pt, NULL);
-  }
+  return generatedtasks;
 }
 
-int main(int argc, char **argv){
-  int i, count = 0;
-  int nthread;
-  int fd;
-  off_t iosize, fsize, seekmax;
-  int mode;
-  FILE *fp;
-  queue_t rinfoque;
-  waitmng_t waitmng;
-  tskcnf_t *tskcnfs;
-  struct timeval stime, ftime;
-  double elatime, mbps, iops, latency = 0.0;
+int
+main(int argc, char **argv)
+{
+  int i;
+  long generatedtasks;
+  task_queue_t tskque;
+  cleanup_queue_t cleanupque;
+  threadconf_t *thrdcnfs;
+  struct timespec stime, ftime;
 
-  if (argc != 6){
-    printf("Usage : %s filepath iosize nthread mode (iterate|offsetlistpath)\n", argv[0]);
-    exit(1);
-  }
-  iosize = atol(argv[2]);
-  nthread = atoi(argv[3]);
-  mode = atoi(argv[4]);
-  assert(iosize % BLOCK_SIZE == 0);
-
-  // check file size
-  if ((fd = open(argv[1], O_RDONLY)) < 0){
-    perror("open");
-    exit(1);
-  }
-  if ((fsize = lseek(fd, 0, SEEK_END)) < 0){
-    perror("lseek");
-    exit(1);
-  }
-  printf("size of %s = %ld\n", argv[1], fsize);
-  close(fd);
-
-  // set speekmax
-  if (((fsize - iosize) / BLOCK_SIZE) <= RAND_MAX){
-    seekmax = (fsize - iosize) / BLOCK_SIZE;
-  }
-  else{
-    seekmax = RAND_MAX;
-  }
-
-  // init queue
-  initque(&rinfoque, QUE_SIZE);
-
-  // init counter for cheking whether each threads wait for next task
-  waitmng.nwait = 0;
-  waitmng.nthread = nthread;
-  pthread_mutex_init(&waitmng.mtx, NULL);
-  pthread_cond_init(&waitmng.cnd, NULL);
+  parsearg(argc, argv);
+  // init queues
+  init_queue(&tskque.tasks, option.quelength);
+  init_quecontrol(&tskque.control);
+  init_queue(&cleanupque.finthreads, MAX_THREADS);
+  pthread_mutex_init(&cleanupque.mtx, NULL);
+  pthread_cond_init(&cleanupque.cnd, NULL);
 
   // allocate memory for task configuration
-  if (posix_memalign((void **)&tskcnfs, BLOCK_SIZE, sizeof(tskcnf_t) * nthread) != 0){
+  if (posix_memalign((void **) &thrdcnfs,
+                     BLOCK_SIZE,
+                     sizeof(threadconf_t) * option.nthread) != 0) {
     perror("posix_memalign");
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
-  // set readinfo and task configuration
-  for (i = 0; i < nthread; i++){
+  // set task configurations for each threads
+  for (i = 0; i < option.nthread; i++){
     int j;
 
     // set cpuset
-    CPU_ZERO(&tskcnfs[i].cpuset);
-    for (j = 0; j < CPUCORES; j++){ CPU_SET(j, &tskcnfs[i].cpuset); }
-
-    // open file
-    if((tskcnfs[i].fd = open(argv[1], OPEN_FLG_R)) < 0){
-      perror("open");
-      exit(1);
-    }
+    CPU_ZERO(&thrdcnfs[i].cpuset);
+    for (j = 0; j < option.cpu_cores; j++){ CPU_SET(j, &thrdcnfs[i].cpuset); }
 
     // allocate buffer aligned by BLOCK_SIZE
-    if (posix_memalign((void **)&tskcnfs[i].buf, BLOCK_SIZE, iosize) != 0){
+    if (posix_memalign((void **) &thrdcnfs[i].buf, BLOCK_SIZE, option.bufsize) != 0) {
       perror("posix_memalign");
-      exit(1);
+      exit(EXIT_FAILURE);
     }
-    tskcnfs[i].iosize = iosize;
-    tskcnfs[i].rinfoque = &rinfoque;
-    tskcnfs[i].waitmng = &waitmng;
+
+    memset(thrdcnfs[i].buf, 'a', option.bufsize);
+    thrdcnfs[i].iotaskque = &tskque;
+    thrdcnfs[i].cleanupque = &cleanupque;
+    thrdcnfs[i].stats = (stats_t){0, 0, 0, 0, 0};
   }
 
-  if (mode == 1){ // sequential read
-    int iterate = atoi(argv[5]);
-    if ((fp = tmpfile()) == NULL){
-      perror("tmpfile");
-      exit(1);
-    }
-    for (i = 0; i < iterate; i++){ fprintf(fp, "%ld\n", iosize * i); }
-    rewind(fp);
-  }
-  else if (mode == 2){ // random read
-    int iterate = atoi(argv[5]);
-    if ((fp = tmpfile()) == NULL){
-      perror("tmpfile");
-      exit(1);
-    }
-    for (i = 0; i < iterate; i++){
-      fprintf(fp, "%ld\n", (random() % seekmax) * BLOCK_SIZE);
-    }
-    rewind(fp);
-  }
-  else if (mode == 3){ // replay read operation
-    if ((fp = fopen(argv[5], "r")) == NULL){
-      perror("fopen");
-      exit(1);
-    }
-  }
-  else {
-    fprintf(stderr, "wrong mode number : %d\n", mode);
-    exit(1);
-  }
+  // perform io replay
+  fprintf(stderr, "started measurement\n");
+  CLOCK_GETTIME(&stime);
+  generatedtasks = replayio(option.nthread, thrdcnfs);
+  CLOCK_GETTIME(&ftime);
 
-  // perform read
-  printf("started measurement\n");
-  gettimeofday(&stime, NULL);
-  read_replayer(nthread, tskcnfs, fp);
-  gettimeofday(&ftime, NULL);
+  // print statistics information
+  {
+    long operatedtasks = 0;
+    long totalrops = 0, totalwops = 0;
+    long totalrbyte = 0, totalwbyte = 0;
+    double exectime;
+    double usptsk;
+    double riops, wiops;
+    double rmbps, wmbps;
+    double ruspio, wuspio;
 
-  // get profile
-  count = getnext(NULL, NULL);
-  elatime = ((ftime.tv_sec - stime.tv_sec) * 1000000.0 +
-             (ftime.tv_usec - stime.tv_usec));
-  mbps = (iosize * count) / elatime;
-  iops = count / (elatime / 1000000);
-  latency = elatime / count;
-  printf("stime = %ld.%06d\n",
-         (unsigned long)stime.tv_sec, (unsigned int)stime.tv_usec);
-  printf("ftime = %ld.%06d\n",
-         (unsigned long)ftime.tv_sec, (unsigned int)ftime.tv_usec);
-  printf("count = %d\nelapsed = %.1f(us)\nmbps = %f(MB/s)\niops = %f(io/s)\nlatency = %f(us)\n",
-         count, elatime, mbps, iops, latency);
+    for (i = 0; i < option.nthread; i++) {
+      operatedtasks += thrdcnfs[i].stats.operated_tasks;
+      totalrops += thrdcnfs[i].stats.read_ops;
+      totalwops += thrdcnfs[i].stats.write_ops;
+      totalrbyte += thrdcnfs[i].stats.read_byte;
+      totalwbyte += thrdcnfs[i].stats.write_byte;
+    }
+    exectime = TIMEINTERVAL_SEC(stime, ftime);
+    usptsk = exectime * 1000000 / operatedtasks;
+    riops = totalrops / exectime;
+    wiops = totalwops / exectime;
+    rmbps = totalrbyte / exectime;
+    wmbps = totalwbyte / exectime;
+    ruspio = (totalrops == 0.0) ? 0.0 : exectime * 1000000 / totalrops;
+    wuspio = (totalwops == 0.0) ? 0.0 : exectime * 1000000 / totalwops;
+
+    printf("start_time\t%.9f\n"
+           "finish_time\t%.9f\n",
+           TS2SEC(stime), TS2SEC(ftime));
+    printf("exec_time_sec\t%.9f\n"
+           "generated_tasks\t%ld\n"
+           "operated_tasks\t%ld\n"
+           "usec_per_task\t%f\n"
+           "read_io_per_sec\t%f\n"
+           "read_mb_per_sec\t%f\n"
+           "read_usec_per_io\t%.3f\n"
+           "write_io_per_sec\t%f\n"
+           "write_mb_per_sec\t%f\n"
+           "write_usec_per_io\t%.3f\n",
+           exectime, generatedtasks, operatedtasks, usptsk,
+           riops, rmbps, ruspio, wiops, wmbps, wuspio);
+  }
 
   // release resources
-  fclose(fp);
-  for (i = 0; i < nthread; i++){
-    free(tskcnfs[i].buf);
-    close(tskcnfs[i].fd);
-  }
-  free(tskcnfs);
-  delque(&rinfoque);
+  for (i = 0; i < option.nthread; i++){ free(thrdcnfs[i].buf); }
+  free(thrdcnfs);
+  delete_queue(&cleanupque.finthreads);
+  delete_queue(&tskque.tasks);
   return 0;
 }

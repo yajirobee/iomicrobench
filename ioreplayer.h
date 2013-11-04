@@ -2,47 +2,52 @@
 #define __SCHEME_IOREPLAYER__
 
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <pthread.h>
 
-#define CPUCORES 32
-#define BLOCK_SIZE 512
+#include "arrayqueue.h"
+
 #define PRNG_BUFSZ 64
-#define QUE_SIZE 1024
-#define MAX_STRING 128
-#define OPEN_FLG_R O_RDONLY | O_DIRECT
+#define MAX_THREADS 2048
+#define MAX_ROW_LENGTH 1024
+#define MAX_PATH_LENGTH 512
 
-typedef struct{
+typedef enum {
+  READ_IO = 'R',
+  WRITE_IO = 'W'
+} iotype_t;
+
+typedef struct {
+  queue_t tasks;
+  queue_control_t control;
+} task_queue_t;
+
+typedef struct {
+  char filepath[MAX_PATH_LENGTH];
+  iotype_t iotype;
   off_t offset;
-} rinfo_t;
+  size_t iosize;
+  long iteration;
+} iotask_t;
 
-typedef struct{
-  rinfo_t *a;
-  int limit, size, head, tail;
-  pthread_mutex_t mtx;
-  pthread_cond_t more, less;
-} queue_t;
-
-void initque(queue_t *que, size_t limit);
-void delque(queue_t *que);
-void push(queue_t *que, rinfo_t *readinfo);
-rinfo_t pop(queue_t *que);
-
-typedef struct{
-  int nwait, nthread;
+typedef struct {
+  queue_t finthreads;
   pthread_mutex_t mtx;
   pthread_cond_t cnd;
-} waitmng_t;
+} cleanup_queue_t;
 
-typedef struct{
+typedef struct {
+  long operated_tasks;
+  long read_ops, write_ops;
+  long read_byte, write_byte;
+} stats_t;
+
+typedef struct {
   pthread_t pt;
   cpu_set_t cpuset;
-  int fd;
   char *buf;
-  size_t iosize;
-  queue_t *rinfoque;
-  waitmng_t *waitmng;
-} tskcnf_t;
+  task_queue_t *iotaskque;
+  cleanup_queue_t *cleanupque;
+  stats_t stats;
+} threadconf_t;
 
 #endif // __SCHEME_IOREPLAYER__

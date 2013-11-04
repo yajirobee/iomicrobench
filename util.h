@@ -1,11 +1,10 @@
 #ifndef __SCHEME_IOMICROBENCH__
 #define __SCHEME_IOMICROBENCH__
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <fcntl.h>
+#include <stdio.h>
+#include <time.h>
 
+#define BLOCK_SIZE 512
 #define PRNG_BUFSZ 64
 
 #define TS2SEC(ts) (((double) (ts).tv_sec) + ((double) (ts).tv_nsec * 1e-09))
@@ -18,24 +17,6 @@
       fprintf(stderr, " @%s:%d\n", __FILE__, __LINE__);          \
     }                                                            \
   }
-
-typedef struct{
-  int fd;
-  char *buf;
-  double stime, ftime;
-  long ops;
-  cpu_set_t cpuset;
-} seqread_t;
-
-typedef struct{
-  int fd;
-  char *buf;
-  double stime, ftime;
-  long ops;
-  cpu_set_t cpuset;
-  struct random_data random_states;
-  char statebuf[PRNG_BUFSZ];
-} randread_t;
 
 long procsuffix(char *);
 
