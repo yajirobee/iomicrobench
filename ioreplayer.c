@@ -117,12 +117,14 @@ ioreplayer(task_queue_t *tskque, char *buf, stats_t *stats)
       break;
     case WRITE_IO:
       for (i = 0; i < curtask->iteration; i++) { write(fd, buf, curtask->iosize); }
+      //syncfs(fd);
       stats->write_ops += i;
       stats->write_byte += curtask->iosize * i;
       break;
     default:
       fprintf(stderr, "invalid task type: %c\n", curtask->iotype);
     }
+    close(fd);
     free(curtask);
   }
 }
