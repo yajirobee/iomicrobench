@@ -12,18 +12,18 @@ def create_tasks_fromfile(filepath, mode):
     offset = 0
     while offset + iosize <= fsize:
         iteration = min((fsize - offset) / iosize, maxiter)
-        tasks.append((filepath, mode, offset, iosize, iteration))
+        tasks.append((filepath, mode, str(offset), str(iosize), str(iteration)))
         offset += iosize * iteration
     return tasks
 
 def create_workload(output, nthread):
     readfiles = [os.path.join(datadir, "benchdata" + str(i)) for i in range(32)]
     writefiles = [os.path.join(datadir, "benchdata" + str(i)) for i in range(32, 64)]
-    numtasks = 2000
-    readtasksdict = dict([(i, []) for i in range(len(nthread))])
-    writetasksdict = dict([(i, []) for i in range(len(nthread))])
+    numtasks = 4000
+    readtasksdict = dict([(i, []) for i in range(nthread)])
+    writetasksdict = dict([(i, []) for i in range(nthread)])
     with open(output, "w") as fo:
-        for i in range(len(numtasks)):
+        for i in range(numtasks):
             idx = i % nthread
             if (i / nthread) % 2 = 0:
                 if not readtasksdict[idx]:
@@ -39,8 +39,9 @@ def create_workload(output, nthread):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        sys.stderr.write("Usage : {0} output\n".format(sys.argv[0]))
+        sys.stderr.write("Usage : {0} output [nthread]\n".format(sys.argv[0]))
         sys.exit(1)
 
     output = sys.argv[1]
-    create_workload(output, 16)
+    nthread = int(sys.argv) if len(sys.argv) >= 3 else 1
+    create_workload(output, nthread)
