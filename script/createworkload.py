@@ -24,7 +24,7 @@ def create_workload(output, ntasks, nthread):
     with open(output, "w") as fo:
         for i in range(ntasks):
             idx = i % nthread
-            if (i / nthread) % 2 = 0:
+            if (i / nthread) % 4 in [0, 1, 2]:
                 if not readtasksdict[idx]:
                     f = readfiles.pop(0)
                     readtasksdict[idx] = create_tasks_fromfile(f, "R")

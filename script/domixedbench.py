@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-import sys, os
+import sys, os, time
 import subprocess as sp
 import clearcache
 from createworkload import create_workload
@@ -12,9 +12,9 @@ def main():
     iodumpfile = "/tmp/iodump"
     nthreads = [1 << i for i in range(5)]
     for nthread in nthreads:
-        create_workload(output, 4000, nthread)
+        create_workload(iodumpfile, 4000, nthread)
         clearcache.clear_cache(2 ** 30)
-        p = sp.Popen([os.path.join(prgdir, "ioreplayer"), "-m", nthread, iodumpfile])
+        p = sp.Popen([os.path.join(prgdir, "ioreplayer"), "-m", str(nthread), iodumpfile])
         p.wait()
 
 if __name__ == "__main__":
